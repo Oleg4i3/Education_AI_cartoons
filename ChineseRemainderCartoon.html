@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Без Referer: на GitHub Pages неофіційний Google TTS інакше відхиляє запити (з file:// Referer не надсилається) -->
+<meta name="referrer" content="no-referrer">
 <title>Китайська теорема про залишки — анімована презентація</title>
 <style>
 :root{--bg:#f6f1e7;--txt:#2c2416;--mut:#6b5d4f;--red:#e11d48}
@@ -15,11 +17,11 @@ body{font-family:Georgia,'Times New Roman',serif;background:var(--bg);color:var(
 canvas{width:100%;height:100%;display:block;cursor:pointer}
 .scene-indicator{position:absolute;top:14px;right:14px;background:rgba(30,64,175,.92);color:#fff;
   padding:5px 12px;border-radius:5px;font-size:13px;font-weight:bold;pointer-events:none}
-.subtitle{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
-  background:rgba(255,255,255,.95);padding:10px 20px;border-radius:8px;border:1px solid #d4cfc7;
-  font-size:17px;max-width:82%;text-align:center;line-height:1.45;box-shadow:0 2px 10px rgba(0,0,0,.12);
+.subtitle{position:absolute;left:0;right:0;bottom:10px;width:100%;box-sizing:border-box;
+  padding:0 4%;background:transparent;color:#fff;font-weight:bold;
+  font-size:clamp(15px,2.1vw,26px);text-align:center;line-height:1.4;
+  text-shadow:0 0 3px #000,0 0 6px #000,0 2px 5px rgba(0,0,0,.95),0 0 12px rgba(0,0,0,.7);
   transition:opacity .3s;pointer-events:none}
-.subtitle b{color:#1e40af}
 .controls{background:linear-gradient(#241c15,#15100b);border-radius:0 0 10px 10px;padding:6px 14px 12px}
 .progress-zone{position:relative;height:40px;cursor:pointer}
 .progress-track{position:absolute;left:0;right:0;top:15px;height:5px;background:rgba(255,255,255,.16);border-radius:3px;overflow:hidden}
@@ -84,7 +86,7 @@ select{background:#2a221b;color:#eee;border:1px solid rgba(255,255,255,.2);borde
         <option value="0.75">0.75×</option><option value="1" selected>1×</option>
         <option value="1.25">1.25×</option><option value="1.5">1.5×</option>
       </select>
-      <label class="chk"><input type="checkbox" id="chkSubs" checked><span>Субтитри</span></label>
+      <label class="chk"><input type="checkbox" id="chkSubs"><span>Субтитри</span></label>
       <label class="chk"><input type="checkbox" id="chkLabels" checked><span>Назви сцен</span></label>
       <label class="chk"><input type="checkbox" id="chkDebug"><span>Дебаг</span></label>
       <span class="voice" id="voiceState">🔈</span>
@@ -300,17 +302,46 @@ function updateEngineUI(){engineSeg.querySelectorAll('button').forEach(b=>
 function splitChunks(text,maxLen){const ss=text.match(/[^.!?]+[.!?]+/g)||[text];
   const out=[];let cur='';ss.forEach(s=>{if((cur+s).length>maxLen&&cur){out.push(cur.trim());cur=s}else cur+=s});
   if(cur)out.push(cur.trim());return out}
+/* ---- Google TTS (неофіційний): два ендпоїнти, при збої → відкат на Web Speech ---- */
+const G_URLS=[
+  q=>'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=uk&q='+encodeURIComponent(q),
+  q=>'https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=uk&q='+encodeURIComponent(q)];
+let gIdx=0,gOk=false;
+function ukVoice(){const vs=(synth&&synth.getVoices?synth.getVoices():[])||[];
+  return vs.find(v=>v.lang&&v.lang.toLowerCase().replace('_','-').startsWith('uk'))||null}
+/* Результат: 'ok' | 'fail' (помилка або 6 с без старту) | 'skip' (браузер заблокував автоплей) */
+function gPlay(url){return new Promise(res=>{
+  const a=new Audio(url);gAudio=a;let fin=false,started=false;
+  const end=r=>{if(!fin){fin=true;clearTimeout(tm);res(r)}};
+  const tm=setTimeout(()=>{if(!started){try{a.pause()}catch(e){}end('fail')}},6000);
+  a.onplaying=()=>{started=true;clearTimeout(tm);gOk=true};
+  a.onended=()=>end('ok');
+  a.onerror=()=>end(started?'ok':'fail');
+  a.play().catch(e=>{const n=e&&e.name;if(n==='NotAllowedError')end('skip');else if(n!=='AbortError')end('fail')})})}
+function gFallback(rest,idx){
+  console.warn('Google TTS недоступний → відкат на Web Speech');
+  hfMsg='⚠ Google TTS недоступний → Web Speech';
+  engine='webspeech';updateEngineUI();
+  if(rest&&rest.trim())speak(rest,idx);else{if(voiceScene===idx){ttsDone=true;ttsActive=false}}}
 function speak(text,sceneIdx){voiceScene=sceneIdx;ttsDone=false;ttsActive=true;
   const done=()=>{if(voiceScene===sceneIdx){ttsDone=true;ttsActive=false}};
   if(engine==='none'){ttsDone=true;ttsActive=false;return}
-  if(engine==='webspeech'&&synth){try{synth.cancel()}catch(e){}
-    const u=new SpeechSynthesisUtterance(text);u.lang='uk-UA';
+  if(engine==='webspeech'){const v=synth&&ukVoice();
+    if(!v){engine='none';updateEngineUI();hfMsg='⚠ Немає українського голосу → тихо';done();return}
+    try{if(synth.speaking||synth.pending)synth.cancel()}catch(e){}
+    const u=new SpeechSynthesisUtterance(text);u.voice=v;u.lang=v.lang;
     u.rate=clamp(0.95*speed,0.5,2);u.pitch=1;
-    u.onend=done;u.onerror=done;synth.speak(u);if(synth.paused)synth.resume()}
+    u.onend=done;u.onerror=e=>{console.warn('Web Speech:',e&&e.error);done()};
+    synth.speak(u);if(synth.paused)synth.resume()}
   else if(engine==='hf'){const myTok=++gToken;hfWait=true;
     (async()=>{
       if(!await hfEnsure()){if(myTok===gToken)hfFallback(text,sceneIdx);return}
-      const ch=hfSplit(text,110),ps=ch.map(c=>hfSynth(c));ps.forEach(p=>p.catch(()=>{}));{const nx=scenes[sceneIdx+1];if(nx)hfSynth(hfSplit(nx.text,110)[0]).catch(()=>{})}
+      /* у черзі лишаємо лише потрібне: ця сцена + наступна (після перемотування старі заявки не гальмують нові) */
+      {const want=new Set(),vv=hfVoiceSel.value;
+        [sceneIdx,sceneIdx+1].forEach(j=>{const s=scenes[j];if(s)hfSplit(s.text,110).forEach(c=>want.add(vv+'|'+c))});
+        hfPending.forEach(j=>{if(!want.has(j.key)){j.skipped=true;hfCache.delete(j.key);hfPending.delete(j)}})}
+      const ch=hfSplit(text,110),ps=ch.map(c=>hfSynth(c));ps.forEach(p=>p.catch(()=>{}));
+      hfPrefetch(sceneIdx+1); /* уся наступна сцена генерується, поки звучить поточна */
       for(let i=0;i<ch.length;i++){let url;
         if(i>0)hfWait=true;try{url=await ps[i]}catch(e){console.error('UA нейро:',e);if(myTok===gToken)hfFallback(text,sceneIdx);return}
         if(myTok!==gToken)return;
@@ -322,33 +353,42 @@ function speak(text,sceneIdx){voiceScene=sceneIdx;ttsDone=false;ttsActive=true;
           if(isPaused)a.pause()});
         if(myTok!==gToken)return}
       done()})().catch(e=>{console.error(e);hfWait=false;done()})}
-  else{const myTok=++gToken,ch=splitChunks(text,180);let i=0;
-    (function next(){if(myTok!==gToken)return;
-      if(i>=ch.length){done();return}
-      const a=new Audio('https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=uk&q='+encodeURIComponent(ch[i]));
-      gAudio=a;a.onended=()=>{i++;next()};a.onerror=()=>{i++;next()};
-      a.play().catch(()=>{i++;next()})})()}}
+  else{const myTok=++gToken,ch=splitChunks(text,180);
+    (async()=>{
+      for(let i=0;i<ch.length;i++){let r='fail';
+        for(let k=0;k<G_URLS.length&&r==='fail';k++){const ix=(gIdx+k)%G_URLS.length;
+          r=await gPlay(G_URLS[ix](ch[i]));
+          if(myTok!==gToken)return;
+          if(r!=='fail')gIdx=ix}
+        if(r==='fail'){gFallback(ch.slice(i).join(' '),sceneIdx);return}}
+      done()})().catch(e=>{console.error(e);done()})}}
 /* ---- UA нейро: демо robinhad/ukrainian-tts на Hugging Face (відкат -> Google TTS) ---- */
 const HF_SPACE='robinhad/ukrainian-tts',HF_HOST='https://robinhad-ukrainian-tts.hf.space',
   HF_CLIENT='https://cdn.jsdelivr.net/npm/@gradio/client@2.6.0/dist/index.min.js';
 const hfVoiceSel=document.getElementById('hfVoice');
-let hfApp=null,hfConn=null,hfMsg='',hfWait=false,hfQ=Promise.resolve(),hfApi='/predict';const hfCache=new Map();
+let hfApp=null,hfConn=null,hfMsg='',hfWait=false,hfQ=Promise.resolve(),hfApi='/predict';const hfCache=new Map(),hfPending=new Set();
 const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout '+ms)),ms))]);
 function hfEnsure(){if(hfConn)return hfConn;
   hfConn=(async()=>{hfMsg='⏳';const m=await import(HF_CLIENT);
     hfApp=await withTimeout(m.Client.connect(HF_SPACE),60000);hfMsg='';return true})()
     .catch(e=>{console.error('UA нейро:',e);hfMsg='⚠ UA нейро недоступне → Google';hfConn=null;return false});
   return hfConn}
+/* Забираємо аудіо в blob (кеш у пам'яті): коли дійде до сцени, воно вже в браузері. Якщо CORS не дозволяє — лишаємо звичайний URL */
+async function hfBlob(u){try{const r=await withTimeout(fetch(u),30000);if(!r.ok)throw new Error(r.status);
+  return URL.createObjectURL(await r.blob())}catch(e){return u}}
 function hfSynth(t){const v=hfVoiceSel.value,k=v+'|'+t;if(hfCache.has(k))return hfCache.get(k);
-  hfQ.catch(()=>{});
-  const pr=(hfQ=hfQ.catch(()=>{}).then(async()=>{let last;
+  const job={key:k,started:false,skipped:false};hfPending.add(job);
+  const run=hfQ=hfQ.catch(()=>{}).then(async()=>{hfPending.delete(job);
+    if(job.skipped)throw new Error('skipped');job.started=true;let last;
     for(const n of [hfApi,'/tts']){const t0=Date.now();
       try{const r=await withTimeout(hfApp.predict(n,[t,v]),90000);
         const f=r&&r.data&&r.data[0];const u=f&&(f.url||(f.path&&HF_HOST+'/file='+f.path));
         if(!u)throw new Error('немає аудіо у відповіді');hfApi=n;return u}
       catch(e){last=e;if(Date.now()-t0>4000)break}}
-    throw last}));
-  hfCache.set(k,pr);pr.catch(()=>hfCache.delete(k));return pr}
+    throw last});
+  const pr=run.then(hfBlob);
+  hfCache.set(k,pr);pr.catch(()=>{if(hfCache.get(k)===pr)hfCache.delete(k)});return pr}
+function hfPrefetch(i){const s=scenes[i];if(!s)return;hfSplit(s.text,110).forEach(c=>hfSynth(c).catch(()=>{}))}
 /* Ділимо лише за межами речень (. ! ? …): кома чи тире всередині речення не повинні ставати «крапкою».
    Короткі сусідні речення склеюємо до max знаків. Дуже довге речення (>220) ділимо лише за ; або : */
 function hfSplit(text,max){
@@ -373,7 +413,7 @@ let currentScene=0,sceneTime=0,globalTime=0,isPlaying=false,isPaused=false,
     hasStarted=false,finished=false,holdTimer=0,speed=1;
 function setPlayIcon(playing){icoPlay.style.display=playing?'none':'';
   icoPause.style.display=playing?'':'none'}
-function setSubtitle(sc){if(chkSubs.checked){subtitleEl.innerHTML='<b>'+sc.tick+'</b> — '+sc.text;
+function setSubtitle(sc){if(chkSubs.checked){subtitleEl.innerHTML=sc.text;
   subtitleEl.style.opacity='1'}else subtitleEl.style.opacity='0'}
 function startScene(i){currentScene=clamp(i,0,scenes.length-1);sceneTime=0;holdTimer=0;
   const sc=scenes[currentScene];setSubtitle(sc);stopSpeaking();
@@ -408,7 +448,7 @@ btnPrev.onclick=()=>seekScene(currentScene-1);
 progressZone.onclick=e=>{const r=progressZone.getBoundingClientRect();
   seekTime(clamp((e.clientX-r.left)/r.width,0,1)*TOTAL)};
 engineSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{userPicked=true;
-  engine=b.dataset.e;updateEngineUI();stopSpeaking();if(engine==='hf')hfEnsure();
+  engine=b.dataset.e;if(engine!=='hf')hfMsg='';updateEngineUI();stopSpeaking();if(engine==='hf')hfEnsure();
   if(isPlaying&&!isPaused)speakScene()});
 speedSel.onchange=()=>{speed=parseFloat(speedSel.value)};
 chkSubs.onchange=()=>{if(!chkSubs.checked)subtitleEl.style.opacity='0';

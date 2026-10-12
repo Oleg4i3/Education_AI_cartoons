@@ -17,11 +17,11 @@ body{font-family:Georgia,'Times New Roman',serif;background:var(--bg);color:var(
 canvas{width:100%;height:100%;display:block;cursor:pointer}
 .scene-indicator{position:absolute;top:14px;right:14px;background:rgba(30,64,175,.92);color:#fff;
   padding:5px 12px;border-radius:5px;font-size:13px;font-weight:bold;pointer-events:none}
-.subtitle{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
-  background:rgba(255,255,255,.95);padding:10px 20px;border-radius:8px;border:1px solid #d4cfc7;
-  font-size:17px;max-width:82%;text-align:center;line-height:1.45;box-shadow:0 2px 10px rgba(0,0,0,.12);
+.subtitle{position:absolute;left:0;right:0;bottom:10px;width:100%;box-sizing:border-box;
+  padding:0 4%;background:transparent;color:#fff;font-weight:bold;
+  font-size:clamp(15px,2.1vw,26px);text-align:center;line-height:1.4;
+  text-shadow:0 0 3px #000,0 0 6px #000,0 2px 5px rgba(0,0,0,.95),0 0 12px rgba(0,0,0,.7);
   transition:opacity .3s;pointer-events:none}
-.subtitle b{color:#1e40af}
 .controls{background:linear-gradient(#241c15,#15100b);border-radius:0 0 10px 10px;padding:6px 14px 12px}
 .progress-zone{position:relative;height:40px;cursor:pointer}
 .progress-track{position:absolute;left:0;right:0;top:15px;height:5px;background:rgba(255,255,255,.16);border-radius:3px;overflow:hidden}
@@ -86,7 +86,7 @@ select{background:#2a221b;color:#eee;border:1px solid rgba(255,255,255,.2);borde
         <option value="0.75">0.75×</option><option value="1" selected>1×</option>
         <option value="1.25">1.25×</option><option value="1.5">1.5×</option>
       </select>
-      <label class="chk"><input type="checkbox" id="chkSubs" checked><span>Субтитри</span></label>
+      <label class="chk"><input type="checkbox" id="chkSubs"><span>Субтитри</span></label>
       <label class="chk"><input type="checkbox" id="chkLabels" checked><span>Назви сцен</span></label>
       <label class="chk"><input type="checkbox" id="chkDebug"><span>Дебаг</span></label>
       <span class="voice" id="voiceState">🔈</span>
@@ -478,7 +478,7 @@ let currentScene=0,sceneTime=0,globalTime=0,isPlaying=false,isPaused=false,
     hasStarted=false,finished=false,holdTimer=0,speed=1;
 function setPlayIcon(playing){icoPlay.style.display=playing?'none':'';
   icoPause.style.display=playing?'':'none'}
-function setSubtitle(sc){if(chkSubs.checked){subtitleEl.innerHTML='<b>'+sc.tick+'</b> — '+sc.text;
+function setSubtitle(sc){if(chkSubs.checked){subtitleEl.innerHTML=sc.text;
   subtitleEl.style.opacity='1'}else subtitleEl.style.opacity='0'}
 function startScene(i){currentScene=clamp(i,0,scenes.length-1);sceneTime=0;holdTimer=0;
   const sc=scenes[currentScene];setSubtitle(sc);stopSpeaking();
