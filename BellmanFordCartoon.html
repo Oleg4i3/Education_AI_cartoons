@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Без Referer: на GitHub Pages неофіційний Google TTS інакше відхиляє запити (з file:// Referer не надсилається) -->
+<meta name="referrer" content="no-referrer">
+<title>Алгоритм Беллмана — Форда: гроші з повітря — анімована презентація</title>
+<style>
+:root{--bg:#f6f1e7;--txt:#2c2416;--mut:#6b5d4f;--red:#e11d48}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Georgia,'Times New Roman',serif;background:var(--bg);color:var(--txt);
+  display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:18px}
+.container{width:100%;max-width:1240px;display:flex;flex-direction:column}
+.presentation{width:100%;aspect-ratio:16/9;background:#fff;border:2px solid #d4cfc7;
+  border-radius:10px 10px 0 0;position:relative;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+canvas{width:100%;height:100%;display:block;cursor:pointer}
+.scene-indicator{position:absolute;top:14px;right:14px;background:rgba(30,64,175,.92);color:#fff;
+  padding:5px 12px;border-radius:5px;font-size:13px;font-weight:bold;pointer-events:none}
+.subtitle{position:absolute;left:0;right:0;bottom:10px;width:100%;box-sizing:border-box;
+  padding:0 4%;background:transparent;color:#fff;font-weight:bold;
+  font-size:clamp(15px,2.1vw,26px);text-align:center;line-height:1.4;
+  text-shadow:0 0 3px #000,0 0 6px #000,0 2px 5px rgba(0,0,0,.95),0 0 12px rgba(0,0,0,.7);
+  transition:opacity .3s;pointer-events:none}
+.controls{background:linear-gradient(#241c15,#15100b);border-radius:0 0 10px 10px;padding:6px 14px 12px}
+.progress-zone{position:relative;height:40px;cursor:pointer}
+.progress-track{position:absolute;left:0;right:0;top:15px;height:5px;background:rgba(255,255,255,.16);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;width:0;background:linear-gradient(90deg,#e11d48,#f43f5e);border-radius:3px}
+.tick{position:absolute;top:11px;width:3px;height:13px;background:rgba(255,255,255,.45);border-radius:2px;transform:translateX(-1px)}
+.tick:hover{background:#fff}
+.tick.active{background:#fbbf24;box-shadow:0 0 6px #fbbf24}
+.tick-label{position:absolute;top:27px;transform:translateX(-50%);font-size:10px;color:rgba(255,255,255,.62);
+  white-space:nowrap;pointer-events:none;font-family:Arial,sans-serif}
+.btn-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.ctl{background:transparent;border:none;cursor:pointer;width:34px;height:34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;transition:background .2s}
+.ctl:hover{background:rgba(255,255,255,.12)}
+.ctl svg{width:19px;height:19px;fill:#fff}
+.time{color:#fff;font:13px Arial;margin-left:4px;min-width:96px}
+.seg{display:flex;border:1px solid rgba(255,255,255,.18);border-radius:7px;overflow:hidden}
+.seg button{background:transparent;border:none;color:#cfc7ba;padding:5px 10px;font:12px Arial;cursor:pointer}
+.seg button+button{border-left:1px solid rgba(255,255,255,.14)}
+.seg button.on{background:var(--red);color:#fff}
+select{background:#2a221b;color:#eee;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px 6px;font:12px Arial}
+.chk{display:flex;align-items:center;gap:5px;color:#d9d2c5;font:13px Arial;cursor:pointer;user-select:none}
+.chk input{accent-color:var(--red);width:15px;height:15px;cursor:pointer}
+.voice{margin-left:auto;color:#fff;font:15px Arial;background:rgba(255,255,255,.1);border-radius:5px;padding:3px 9px}
+.voice.active{animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.45}}
+.debug-section{margin-top:14px;background:#fff;border:2px solid #d4cfc7;border-radius:8px;padding:14px}
+.debug-section h3{font-size:14px;color:var(--mut);margin-bottom:10px}
+.scene-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:7px}
+.scene-list button{padding:7px;border:2px solid #d4cfc7;border-radius:6px;background:#fff;color:var(--txt);
+  font:12px Georgia;cursor:pointer;text-align:left}
+.scene-list button:hover{border-color:#1e40af}
+.scene-list button.active{background:#1e40af;color:#fff;border-color:#1e40af}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="presentation">
+    <canvas id="canvas"></canvas>
+    <div class="scene-indicator" id="sceneIndicator"></div>
+    <div class="subtitle" id="subtitle" style="opacity:0"></div>
+  </div>
+
+  <div class="controls">
+    <div class="progress-zone" id="progressZone">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div id="ticksLayer"></div>
+    </div>
+    <div class="btn-row">
+      <button class="ctl" id="btnPlay" title="Грати / Пауза (Space)"><span id="icoPlay"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span><span id="icoPause" style="display:none"><svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg></span></button>
+      <button class="ctl" id="btnStop" title="Спочатку (R)"><svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg></button>
+      <button class="ctl" id="btnPrev" title="Попередня сцена (←)"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+      <button class="ctl" id="btnNext" title="Наступна сцена (→)"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+      <span class="time" id="timeDisp">0:00 / 0:00</span>
+      <div class="seg" id="engineSeg" title="Рушій озвучення">
+        <button data-e="hf" title="Українська нейромережа (безкоштовне демо на Hugging Face)">UA нейро</button>
+        <button data-e="webspeech">Web Speech</button>
+        <button data-e="google" class="on">Google TTS</button>
+        <button data-e="none">Тихо</button>
+      </div>
+      <select id="hfVoice" title="Голос (для UA нейро)"><option value="Тетяна (жіночий) 👩">Тетяна</option><option value="Лада (жіночий) 👩">Лада</option><option value="Дмитро (чоловічий) 👨">Дмитро</option><option value="Микита (чоловічий) 👨" selected>Микита</option><option value="Олекса (чоловічий) 👨">Олекса</option></select>
+      <select id="speedSel" title="Швидкість">
+        <option value="0.75">0.75×</option><option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option><option value="1.5">1.5×</option>
+      </select>
+      <label class="chk"><input type="checkbox" id="chkSubs"><span>Субтитри</span></label>
+      <label class="chk"><input type="checkbox" id="chkLabels" checked><span>Назви сцен</span></label>
+      <label class="chk"><input type="checkbox" id="chkDebug"><span>Дебаг</span></label>
+      <span class="voice" id="voiceState">🔈</span>
+    </div>
+  </div>
+
+  <div class="debug-section" id="debugSection" style="display:none">
+    <h3>🔧 Перейти до сцени</h3>
+    <div class="scene-list" id="sceneList"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================= БАЗА ================= */
+const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d');
+const subtitleEl=document.getElementById('subtitle'),sceneIndicator=document.getElementById('sceneIndicator');
+const progressZone=document.getElementById('progressZone'),progressFill=document.getElementById('progressFill');
+const timeDisp=document.getElementById('timeDisp'),voiceState=document.getElementById('voiceState');
+const ticksLayer=document.getElementById('ticksLayer'),sceneListEl=document.getElementById('sceneList');
+const debugSection=document.getElementById('debugSection');
+const chkSubs=document.getElementById('chkSubs'),chkLabels=document.getElementById('chkLabels'),chkDebug=document.getElementById('chkDebug');
+const btnPlay=document.getElementById('btnPlay'),btnStop=document.getElementById('btnStop'),
+      btnPrev=document.getElementById('btnPrev'),btnNext=document.getElementById('btnNext'),
+      icoPlay=document.getElementById('icoPlay'),icoPause=document.getElementById('icoPause'),
+      speedSel=document.getElementById('speedSel'),engineSeg=document.getElementById('engineSeg');
+
+let W=0,H=0,K=1,DPR=1;
+function resize(){const r=canvas.getBoundingClientRect();DPR=window.devicePixelRatio||1;
+  W=r.width;H=r.height;canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);
+  K=Math.max(.6,Math.min(1.1,W/1150));}
+window.addEventListener('resize',resize);resize();
+
+const TAU=Math.PI*2;
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const lerp2=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t)];
+const eo=t=>1-Math.pow(1-t,3);
+const eio=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const eob=t=>{const c=1.70158;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2)};
+const stag=(t,s,d)=>clamp((t-s)/d,0,1);
+const rnd=i=>{const x=Math.sin(i*127.1+311.7)*43758.5453;return x-Math.floor(x)};
+const BLUE='#2563eb',RED='#dc2626';
+let gtNow=0;
+function fnt(px,bold){ctx.font=(bold?'bold ':'')+Math.round(px*K)+'px Georgia,"Times New Roman",serif'}
+function fntE(px){ctx.font=Math.round(px*K)+'px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif'}
+function txt(t,x,y,al){ctx.textAlign=al||'center';ctx.fillText(t,x,y)}
+function rr(x,y,w,h,r){r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+function card(x,y,w,h){ctx.fillStyle='rgba(255,255,255,.93)';rr(x,y,w,h,10*K);ctx.fill();
+  ctx.strokeStyle='#d4cfc7';ctx.lineWidth=1.5*K;ctx.stroke()}
+function chip(text,x,y,al,col){col=col||'#1e40af';if(al<=0)return;ctx.globalAlpha=al;fnt(16,true);
+  const tw=ctx.measureText(text).width;ctx.fillStyle='rgba(255,255,255,.95)';rr(x-tw/2-10*K,y-14*K,tw+20*K,26*K,7*K);ctx.fill();
+  ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.stroke();ctx.fillStyle=col;txt(text,x,y+5*K);ctx.globalAlpha=1}
+function stamp(text,x,y,size,color,st,t0,rot){const p=eob(stag(st,t0,0.45));if(p<=0)return;
+  ctx.save();ctx.translate(x,y);ctx.rotate((rot||-0.1)*(1-p*.5));ctx.scale(p,p);
+  fnt(size,true);const w2=ctx.measureText(text).width+36*K;
+  ctx.fillStyle='rgba(255,255,255,.93)';rr(-w2/2,-size*.72*K,w2,size*1.44*K,10*K);ctx.fill();
+  ctx.strokeStyle=color;ctx.lineWidth=3*K;ctx.stroke();ctx.fillStyle=color;txt(text,0,size*.34*K);ctx.restore()}
+function shock(x,y,st,t0,color,R){R=R||180;const u=stag(st,t0,0.9);if(u<=0||u>=1)return;
+  ctx.strokeStyle=color;ctx.globalAlpha=(1-u)*.8;ctx.lineWidth=(4*(1-u)+1)*K;
+  ctx.beginPath();ctx.arc(x,y,u*R*K,0,TAU);ctx.stroke();ctx.globalAlpha=1}
+function confetti(x,y,st,t0,n){for(let i=0;i<n;i++){const u=(st-t0)-i*.012;if(u<0||u>2.6)continue;
+  const a=rnd(i)*TAU,v=(110+rnd(i+50)*170)*K,dx=Math.cos(a)*v*u*.6,dy=Math.sin(a)*v*u*.6+140*K*u*u;
+  ctx.globalAlpha=clamp(1-u/2.6,0,1);ctx.fillStyle=[BLUE,RED,'#eab308','#16a34a'][i%4];
+  ctx.beginPath();ctx.arc(x+dx,y+dy,3.5*K,0,TAU);ctx.fill()}ctx.globalAlpha=1}
+function typeText(text,st,t0){const n=Math.floor(Math.max(0,(st-t0))*30);if(n<=0)return null;
+  return text.slice(0,n)+(n<text.length&&Math.floor(gtNow*3)%2?'▌':'')}
+function caption(text,st,t0,y){const shown=typeText(text,st,t0);if(!shown)return;
+  fnt(19);const tw=ctx.measureText(text).width;
+  ctx.fillStyle='rgba(255,255,255,.88)';rr(W/2-tw/2-14,y-24*K,tw+28,34*K,8);ctx.fill();
+  ctx.strokeStyle='#d4cfc7';ctx.lineWidth=1;ctx.stroke();ctx.fillStyle='#4a3f2e';txt(shown,W/2,y)}
+function sceneTitle(t,st,col){col=col||'#2c2416';const p=eob(stag(st,0.1,0.6));if(p>0){
+  ctx.save();ctx.translate(W/2,44);ctx.scale(Math.max(.001,p),Math.max(.001,p));
+  fnt(30,true);ctx.fillStyle=col;txt(t,0,0);ctx.restore()}
+  const u=eo(stag(st,0.4,0.5));if(u>0){ctx.strokeStyle='#e11d48';ctx.lineWidth=3*K;ctx.beginPath();
+  ctx.moveTo(W/2-95*K*u,56);ctx.lineTo(W/2+95*K*u,56);ctx.stroke()}}
+function arrowHead(x,y,ang,size,col,a){if(a<=0)return;ctx.save();ctx.translate(x,y);ctx.rotate(ang);ctx.globalAlpha=a;
+  ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(-size,-size*0.7);ctx.lineTo(size*0.6,0);ctx.lineTo(-size,size*0.7);ctx.closePath();ctx.fill();ctx.restore()}
+function curveArrow(x1,y1,x2,y2,bend,col,pop,lw){if(pop<=0)return;const mx=(x1+x2)/2,my=(y1+y2)/2;
+  const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy)||1;const nx=-dy/len,ny=dx/len;
+  const cx2=mx+nx*bend,cy2=my+ny*bend;
+  ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.lineCap='round';ctx.globalAlpha=pop;
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.quadraticCurveTo(cx2,cy2,x2,y2);ctx.stroke();
+  arrowHead(x2,y2,Math.atan2(y2-cy2,x2-cx2),8*K,col,pop);ctx.globalAlpha=1}
+function heart(x,y,s,a){ctx.save();ctx.translate(x,y);ctx.scale(s/8,s/8);ctx.globalAlpha=a;
+  ctx.fillStyle='#ec4899';ctx.beginPath();ctx.moveTo(0,4);ctx.bezierCurveTo(-6,-2,-3,-8,0,-3);
+  ctx.bezierCurveTo(3,-8,6,-2,0,4);ctx.fill();ctx.restore()}
+function hearts(x,y,st,t0,n){for(let i=0;i<n;i++){const u=st-t0-i*0.5;if(u<0||u>2.4)continue;
+  heart(x+Math.sin(u*5+i*2)*12*K,y-14*K-u*50*K,(1.6+(i%2)*0.8)*K*2.2,clamp(1-u/2.4,0,1)*0.9)}}
+function popWrap(x,y,p,fn){if(p<=0)return;ctx.save();ctx.translate(x,y);ctx.scale(p,p);ctx.translate(-x,-y);fn();ctx.restore()}
+function pointer(x1,y1,x2,y2,st,t0){const u=stag(st,t0,0.4);if(u<=0)return;
+  ctx.globalAlpha=u;ctx.strokeStyle='#94a3b8';ctx.lineWidth=1.6;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#94a3b8';ctx.beginPath();ctx.arc(x2,y2,3.5*K,0,TAU);ctx.fill();ctx.globalAlpha=1}
+function wordChips(cx,cy,word,st,t0,active,doneN,sc){sc=sc||1;const n=word.length,gap=54*K*sc;const x0=cx-(n-1)*gap/2;
+  word.forEach((L,i)=>{const p=eob(stag(st,t0+i*0.3,0.4));if(p<=0)return;
+    const x=x0+i*gap,col=(L==='B')?BLUE:RED,act=(i===active);
+    const sc2=act?(1+0.1*Math.sin(gtNow*6)):1;
+    ctx.save();ctx.translate(x,cy);ctx.scale(sc*sc2*p,sc*sc2*p);
+    ctx.beginPath();ctx.arc(0,0,16*K,0,TAU);ctx.fillStyle=col;ctx.fill();
+    ctx.strokeStyle=act?'#fff':'rgba(15,23,42,.35)';ctx.lineWidth=act?3:1.5;ctx.stroke();
+    if(act){ctx.globalAlpha=0.5+0.3*Math.sin(gtNow*7);ctx.beginPath();ctx.arc(0,0,23*K,0,TAU);
+      ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();ctx.globalAlpha=1}
+    fnt(15,true);ctx.fillStyle='#fff';txt(L==='B'?'С':'Ч',0,5.5*K);
+    if(i<doneN){fnt(13,true);ctx.fillStyle='#22c55e';txt('✓',13*K,-13*K)}
+    ctx.restore()})}
+function waves(x,y,st,t0,col){if(st<t0)return;const u0=st-t0;
+  for(let k=0;k<3;k++){const u=(u0*1.1-k*0.33)%1;if(u<0)continue;
+    ctx.globalAlpha=(1-u)*0.8;ctx.strokeStyle=col;ctx.lineWidth=2*K;
+    ctx.beginPath();ctx.arc(x,y,(6+u*20)*K,-0.9,0.9);ctx.stroke()}ctx.globalAlpha=1}
+function drawWalkerDot(x,y,col){ctx.beginPath();ctx.arc(x,y-10*K,9*K,0,TAU);ctx.fillStyle=col;ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle='#1f2937';ctx.beginPath();ctx.arc(x-3*K,y-12*K,1.4*K,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.arc(x+3*K,y-12*K,1.4*K,0,TAU);ctx.fill()}
+
+/* ================= ВАЛЮТНИЙ АРБІТРАЖ ================= */
+const CNC=['USD','EUR','GBP'],CSC=['$','€','£'],NPC=[[.3,.7],[.5,.3],[.7,.7]],EDC=[[0,1,.9],[1,0,1.08],[1,2,.88],[2,0,1.3],[2,1,1.12],[0,2,.75]];
+const CNA=['','','','',''],CSA=['1','2','3','4','5'],NPA=[[.08,.52],[.2,.26],[.3,.72],[.42,.3],[.52,.7]];
+const R0=26,GOLD='#ca8a04',GR='#16a34a',CYC=[0,2,3];let CN=CNC,CS=CSC,NP=NPC,ED=EDC;
+const useG=g=>{if(g==='c'){CN=CNC;CS=CSC;NP=NPC;ED=EDC}else{CN=CNA;CS=CSA;NP=NPA}};
+const wrapG=(g,f)=>(w,h,st,gt)=>{useG(g);return f(w,h,st,gt)};
+const fw=c=>(-Math.log(c)).toFixed(3).replace('-','−'),fr=c=>c.toFixed(2);
+const P=i=>[NP[i][0]*W,NP[i][1]*H];
+function E(k){const A=P(ED[k][0]),B=P(ED[k][1]),L=Math.hypot(B[0]-A[0],B[1]-A[1]),ux=(B[0]-A[0])/L,uy=(B[1]-A[1])/L,r=R0*K+4;
+  const x1=A[0]+ux*r,y1=A[1]+uy*r,x2=B[0]-ux*r,y2=B[1]-uy*r;return [x1,y1,(x1+x2)/2-uy*30*K,(y1+y2)/2+ux*30*K,x2,y2]}
+const bz=(e,t)=>[(1-t)*(1-t)*e[0]+2*(1-t)*t*e[2]+t*t*e[4],(1-t)*(1-t)*e[1]+2*(1-t)*t*e[3]+t*t*e[5]];
+function edge(k,col,a,lw,lab){if(a<=0)return;const e=E(k);ctx.globalAlpha=a;ctx.strokeStyle=col;ctx.lineWidth=lw*K;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(e[0],e[1]);ctx.quadraticCurveTo(e[2],e[3],e[4],e[5]);ctx.stroke();
+  arrowHead(e[4],e[5],Math.atan2(e[5]-e[3],e[4]-e[2]),9*K,col,a);ctx.globalAlpha=a;
+  if(lab){const m=bz(e,.5);fnt(15,true);const w=ctx.measureText(lab).width+14;ctx.fillStyle='#fff';rr(m[0]-w/2,m[1]-12*K,w,24*K,6);ctx.fill();
+    ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.stroke();ctx.fillStyle=col;txt(lab,m[0],m[1]+5*K)}ctx.globalAlpha=1}
+function node(i,a,col,sub){if(a<=0)return;const p=P(i);popWrap(p[0],p[1],eob(a),()=>{ctx.beginPath();ctx.arc(p[0],p[1],R0*K,0,TAU);
+  ctx.fillStyle=col||'#fff';ctx.fill();ctx.strokeStyle='#334155';ctx.lineWidth=2.5*K;ctx.stroke();fnt(24,true);ctx.fillStyle=col?'#fff':'#1e293b';txt(CS[i],p[0],p[1]+8*K);
+  fnt(13,true);ctx.fillStyle='#475569';txt(CN[i],p[0],p[1]+R0*K+17*K);
+  if(sub!=null){fnt(16,true);ctx.fillStyle='#b45309';txt(sub,p[0],p[1]-R0*K-9*K)}})}
+function coin(x,y,s,t){ctx.beginPath();ctx.arc(x,y,13*K*s,0,TAU);ctx.fillStyle='#facc15';ctx.fill();ctx.strokeStyle='#a16207';ctx.lineWidth=2*K;ctx.stroke();
+  fnt(14*s,true);ctx.fillStyle='#713f12';txt(t||'$',x,y+5*K*s)}
+function s0(w,h,st){sceneTitle('Гроші з повітря',st);
+  [0,1,2].forEach(i=>node(i,stag(st,.5+i*.5,.5)));
+  CYC.forEach((k,i)=>edge(k,st>12.5?GR:'#94a3b8',stag(st,1.8+i*.5,.5),st>12.5?5:3,fr(ED[k][2])));
+  const u=clamp((st-3.5)/9,0,3),sg=Math.min(2,Math.floor(u)),f=u-sg,V=[1000,900,792,1029.6];
+  if(st>3.5){const p=bz(E(CYC[sg]),eio(f)),v=lerp(V[sg],V[sg+1],eio(f));coin(p[0],p[1],1.2);fnt(24,true);ctx.fillStyle=GOLD;txt('$'+v.toFixed(1),p[0],p[1]-30*K)}
+  shock(P(0)[0],P(0)[1],st,12.5,GR,160);stamp('+29,6 $ без ризику!',W/2,H*.88,32,GR,st,13,-.05);confetti(W/2,H*.86,st,13,70)}
+function s1(w,h,st,gt){sceneTitle('Ринок — це граф',st);
+  [0,1,2].forEach(i=>node(i,stag(st,.4+i*.6,.5)));
+  ED.forEach((e,k)=>{const a=stag(st,9+k*2.4,.5);edge(k,'#64748b',a,3,CS[e[0]]+'→'+CS[e[1]]+'  '+fr(e[2]));
+    if(a>=1){const p=bz(E(k),(gt*.35+k*.21)%1);coin(p[0],p[1],.6)}});
+  caption('у кожної пари курси різні в обидва боки',st,3,H*.94)}
+function s2(w,h,st){sceneTitle('Добуток курсів',st);
+  [0,1,2].forEach(i=>node(i,1));
+  CYC.forEach((k,i)=>{const t0=2+i*2.5,on=(st>t0&&st<t0+2.5)||st>9.5;edge(k,on?GOLD:'#94a3b8',1,on?6:3,fr(ED[k][2]));
+    if(st>t0&&st<t0+2.5){const p=bz(E(k),eio((st-t0)/2.5));coin(p[0],p[1],1)}});
+  const x=W*.78,y=H*.3;card(x-W*.01,y-48*K,W*.22,H*.4);
+  ['0,90','× 0,88','× 1,30'].forEach((s,i)=>{const p=eob(stag(st,2+i*2.5,.4));if(p>0){fnt(28*p,true);ctx.fillStyle='#1e293b';txt(s,x+W*.1,y+i*42*K)}});
+  if(st>9.5){fnt(32,true);ctx.fillStyle=GR;txt('= 1,0296',x+W*.1,y+3*42*K+8*K)}
+  stamp('> 1  →  +2,96 % за коло',W*.45,H*.9,30,GR,st,11,-.05);confetti(W*.45,H*.88,st,11,50)}
+function s3(w,h,st){sceneTitle('Логарифм: × стає +',st);
+  const m=st>4.5;[0,1,2].forEach(i=>node(i,1));
+  CYC.forEach(k=>edge(k,m?'#7c3aed':'#94a3b8',1,3.5,m?fw(ED[k][2]):fr(ED[k][2])));
+  if(m)shock(W*.5,H*.5,st,4.5,'#7c3aed',200);
+  const x=W*.78,y=H*.25;card(x-W*.01,y-40*K,W*.22,H*.5);
+  if(st>1){fnt(20,true);ctx.fillStyle='#1e293b';txt('w = −ln(курс)',x+W*.1,y)}
+  CYC.forEach((k,i)=>{if(st>6+i*1.5){fnt(24,true);ctx.fillStyle='#7c3aed';txt((i?'+ ':'')+fw(ED[k][2]),x+W*.1,y+(i+1)*44*K)}});
+  if(st>11){fnt(26,true);ctx.fillStyle=RED;txt('= −0,029',x+W*.1,y+4*44*K)}
+  stamp('Σ < 0 — цикл від’ємної ваги!',W*.45,H*.88,28,RED,st,12.5,-.05);caption('ln(a·b·c) = ln a + ln b + ln c',st,1.5,H*.95)}
+function s6(w,h,st,gt){sceneTitle('Заробляємо',st);const LAP=1.5,u=clamp((st-5)/LAP,0,10),g=u*3,sg=Math.floor(g)%3,bank=1000*Math.pow(1.0296,u);
+  [0,1,2].forEach(i=>node(i,1));CYC.forEach(k=>edge(k,GR,1,4,fr(ED[k][2])));
+  if(st>5&&u<10){const p=bz(E(CYC[sg]),eio(g-Math.floor(g)));coin(p[0],p[1],1.2)}
+  const x=W*.78,y=H*.22,cw=W*.2,ch=H*.34;card(x-W*.01,y-30*K,W*.22,H*.56);
+  fnt(34,true);ctx.fillStyle=GOLD;txt('$'+bank.toFixed(0),x+W*.1,y+20*K);fnt(14);ctx.fillStyle='#64748b';txt('кіл: '+Math.floor(u)+' з 10',x+W*.1,y+44*K);
+  ctx.strokeStyle=GR;ctx.lineWidth=3*K;ctx.beginPath();for(let n=0;n<=Math.floor(u*10);n++){const b=1000*Math.pow(1.0296,n/10);
+    const px=x+(n/100)*cw,py=y+90*K+ch-(b-1000)/340*ch;n?ctx.lineTo(px,py):ctx.moveTo(px,py)}ctx.stroke();
+  if(u>=10){stamp('×1,34 за 10 кіл',W*.45,H*.88,30,GR,st,5+10*LAP,-.05);confetti(W*.45,H*.86,st,5+10*LAP,60)}}
+function s7(w,h,st,gt){sceneTitle('Реальність',st);const dec=Math.exp(-Math.max(0,st-2)*.5),pr=1+.0296*dec+Math.sin(gt*30)*.0006*dec;
+  fnt(58,true);ctx.fillStyle=pr>1.003?GR:RED;txt(pr.toFixed(4),W*.27,H*.42);fnt(18);ctx.fillStyle='#475569';txt('добуток курсів по колу',W*.27,H*.5);
+  fnt(15);txt('ринок вирівнює курси за мілісекунди',W*.27,H*.56);
+  ['Комісії','Спреди','Роботи-трейдери','O(V·E) — складність'].forEach((s,i)=>{const p=eob(stag(st,5+i*2.4,.5));if(p>0){const y=H*.22+i*H*.16;
+    ctx.globalAlpha=Math.min(1,p);card(W*.58+(1-p)*90,y,W*.36,H*.11);fnt(22,true);ctx.fillStyle=i==3?'#1e40af':'#334155';txt(s,W*.76+(1-p)*90,y+H*.07);ctx.globalAlpha=1}});}
+const scenesC=[
+ {tick:'Хук',dur:22,draw:s0,text:"Тисяча доларів. Міняємо на євро — дев'ятсот. Євро на фунти — сімсот дев'яносто два. Фунти назад у долари — і в нас тисяча двадцять дев'ять шістдесят! Двадцять дев'ять доларів із повітря, без ризику, за кілька секунд. Це валютний арбітраж. Як знайти такий круг? Допоможе алгоритм Беллмана — Форда."},
+ {tick:'Граф',dur:23,draw:s1,text:"Валютний ринок — це граф. Вершини — валюти, ребра — курси обміну, і в кожної пари вони різні в обидва боки. Долар дає дев'яносто центів євро, а євро повертає долар вісім. Євро дає вісімдесят вісім пенсів, а фунт коштує долар тридцять. Гроші постійно течуть по ребрах."},
+ {tick:'Добуток',dur:18,draw:s2,text:"Що дає коло? Перемножимо курси: дев'яносто сотих, на вісімдесят вісім сотих, на одну цілу три десятих. Вийде більше одиниці — майже три відсотки прибутку за коло."},
+ {tick:'Логарифм',dur:22,draw:s3,text:"Алгоритм уміє шукати суму, а не добуток. Тож беремо логарифм: від'ємний логарифм курсу стає вагою ребра. Добуток більший за одиницю — це сума ваг менша за нуль. Прибутковий цикл став циклом від'ємної ваги! Лишилося навчитися такі цикли знаходити."},
+ {tick:'Повернення',dur:26,draw:s6,text:"Повертаємося до валют. Алгоритм знайшов цикл: долар, євро, фунт. Кожне коло множить гроші на одну цілу нуль двісті дев'яносто шість. Після десяти кіл тисяча доларів перетворюється на понад тисячу триста. Що швидше крутимо коло, то більше виходить."},
+ {tick:'Реальність',dur:22,draw:s7,text:"Чому ж усі не багаті? Ринок вирівнює курси за мілісекунди, а роботи-трейдери ловлять такі цикли швидше за нас. Додайте комісії та спреди — і прибуток зникає. Складність алгоритму — число вершин на число ребер. Але алгоритм корисний не лише на біржі."}];
+const bm=x=>String(x).replace('-','−'),BR=4,BI=[0,1e9,1e9,1e9,1e9],BN=[-1,-1,-1,-1,-1];
+const ED1=[[3,4,2],[2,3,-3],[1,2,-2],[0,1,5],[0,2,9]],ED2=ED1.concat([[4,1,1]]);
+function bfRun(Es){const d=BI.slice(),pr=BN.slice(),S=[];for(let r=1;r<=BR+1;r++)Es.forEach((e,k)=>{const ok=d[e[0]]<1e8&&d[e[0]]+e[2]<d[e[1]];
+  if(ok&&r<=BR){d[e[1]]=d[e[0]]+e[2];pr[e[1]]=e[0]}S.push({r,k,ok,d:d.slice(),pr:pr.slice()})});return S}
+const BS1=bfRun(ED1),BS2=bfRun(ED2);
+function bfPanel(Es,d,pr,ck,hl,mk){const x=W*.62,y=H*.2,rh=32*K;card(x-14*K,y-46*K,W*.37,H*.76);
+  fnt(15,true);ctx.fillStyle='#64748b';txt('вершина',x+W*.05,y-14*K);txt('відстань d',x+W*.15,y-14*K);txt('попередник π',x+W*.265,y-14*K);
+  for(let i=0;i<5;i++){const yy=y+i*rh+10*K;if(hl===i){ctx.fillStyle='#fed7aa';rr(x-6*K,yy-rh*.55,W*.35,rh*.9,6);ctx.fill()}
+    fnt(18,true);ctx.fillStyle='#1e293b';txt(String(i+1),x+W*.05,yy+6*K);ctx.fillStyle=hl===i?'#c2410c':'#1d4ed8';txt(d[i]>1e8?'∞':bm(d[i]),x+W*.15,yy+6*K);
+    ctx.fillStyle='#475569';txt(pr[i]<0?'—':String(pr[i]+1),x+W*.265,yy+6*K)}
+  const y2=y+5*rh+34*K;fnt(15,true);ctx.fillStyle='#64748b';txt('ребра — у фіксованому порядку',x+W*.17,y2-8*K);
+  Es.forEach((e,k)=>{const yy=y2+k*rh*.78+16*K;if(ck===k){ctx.fillStyle='#fde68a';rr(x-6*K,yy-rh*.48,W*.35,rh*.72,6);ctx.fill()}
+    fnt(16,true);ctx.fillStyle='#1e293b';txt((e[0]+1)+' → '+(e[1]+1)+'    w = '+bm(e[2]),x+W*.04,yy+4*K,'left');
+    if(mk[k]!=null){ctx.fillStyle=mk[k]?GR:'#94a3b8';fnt(18,true);txt(mk[k]?'✓':'✗',x+W*.32,yy+5*K)}})}
+function bfDraw(Es,d,pr,cur,hl,mk,st,ttl,ov){sceneTitle(ttl,st);ED=Es;
+  Es.forEach((e,k)=>{const c=cur&&cur.k===k;edge(k,c?(cur.ok?(cur.r>BR?RED:'#f97316'):'#475569'):((ov&&ov[k])||'#94a3b8'),stag(st,.2+k*.15,.4),c?6:(ov&&ov[k]?5:3),bm(e[2]))});
+  [0,1,2,3,4].forEach(i=>node(i,stag(st,.1,.4),hl===i?'#f97316':(d[i]===0?GR:null),d[i]>1e8?'∞':bm(d[i])));
+  bfPanel(Es,d,pr,cur?cur.k:-1,hl,mk)}
+function bfView(Es,S,lo,hi,T,dt,st,ttl,ov){const q=(st-T)/dt,n=Math.floor(q),end=n>=hi-lo,idx=n<0?lo-1:Math.min(lo+n,hi-1),f=q-n,
+  cur=(idx>=lo&&!end)?S[idx]:null,state=idx>=0?S[idx]:{d:BI,pr:BN,r:0},mk={};
+  for(let j=lo;j<=idx;j++)if(S[j].r===S[idx].r&&(j<idx||end||f>.55))mk[S[j].k]=S[j].ok;
+  const hl=cur&&cur.ok&&f<.8&&cur.r<=BR?Es[cur.k][1]:-1;bfDraw(Es,state.d,state.pr,cur,hl,mk,st,ttl,ov);
+  const r=idx>=0?S[idx].r:0;fnt(20,true);ctx.fillStyle='#1e293b';
+  txt(cur?(cur.r>BR?'Перевірка: V-та ітерація':'Ітерація '+cur.r+' з '+BR):(r?(r>BR?'Перевірка завершена':'Ітерація '+r+' завершена'):''),W*.06,H*.16,'left');
+  if(cur){const e=Es[cur.k],pd=idx>0?S[idx-1].d:BI,da=pd[e[0]],db=pd[e[1]],a=e[0]+1,b=e[1]+1,
+    t=da>1e8?'d['+a+'] = ∞  →  ребро поки недосяжне, пропускаємо':'d['+a+'] + w = '+bm(da)+' + ('+bm(e[2])+') = '+bm(da+e[2])+(cur.ok?'  <  ':'  ≥  ')+(db>1e8?'∞':bm(db))
+      +(cur.ok?(cur.r>BR?'  →  ще можна покращити!':'  →  d['+b+'] = '+bm(da+e[2])+', π['+b+'] = '+a):'  →  без змін'),col=cur.ok?(cur.r>BR?RED:'#f97316'):'#94a3b8';
+    fnt(17,true);const wd=ctx.measureText(t).width+30*K;ctx.fillStyle='#fff';rr(W*.3-wd/2,H*.86,wd,40*K,10);ctx.fill();
+    ctx.strokeStyle=col;ctx.lineWidth=2*K;ctx.stroke();ctx.fillStyle='#1e293b';txt(t,W*.3,H*.86+26*K);
+    if(cur.ok&&f<.5)shock(P(Es[cur.k][1])[0],P(Es[cur.k][1])[1],st,T+n*dt,col,90)}}
+function bfRelax(y,du,w,dv,t0,st){const p=eob(stag(st,t0,.5));if(p<=0)return;const x1=W*.12,x2=W*.42,ok=du+w<dv,f=ok?eio(stag(st,t0+4.5,1.2)):0,val=Math.round(lerp(dv,du+w,f));
+  ctx.globalAlpha=Math.min(1,p);
+  [[x1,'u','d = '+du,'#dbeafe'],[x2,'v','d = '+val,f>0?'#fed7aa':'#dbeafe']].forEach(a=>{ctx.beginPath();ctx.arc(a[0],y,30*K,0,TAU);ctx.fillStyle=a[3];ctx.fill();
+    ctx.strokeStyle='#334155';ctx.lineWidth=2.5*K;ctx.stroke();fnt(22,true);ctx.fillStyle='#1e293b';txt(a[1],a[0],y+8*K);fnt(18,true);ctx.fillStyle='#1d4ed8';txt(a[2],a[0],y+60*K)});
+  ctx.strokeStyle='#475569';ctx.lineWidth=3*K;ctx.beginPath();ctx.moveTo(x1+34*K,y);ctx.lineTo(x2-34*K,y);ctx.stroke();arrowHead(x2-34*K,y,0,10*K,'#475569',1);ctx.globalAlpha=Math.min(1,p);
+  fnt(18,true);ctx.fillStyle=w<0?RED:'#1e293b';txt('w = '+bm(w),(x1+x2)/2,y-14*K);
+  fnt(20,true);ctx.fillStyle='#1e293b';txt(st<t0+2.5?'d[u] + w < d[v] ?':'d[u] + w = '+du+' + ('+bm(w)+') = '+bm(du+w)+(ok?'  <  ':'  ≥  ')+dv,W*.58,y-6*K,'left');
+  if(st>t0+4){ctx.fillStyle=ok?GR:'#64748b';txt(ok?'✓ d[v] = '+bm(du+w)+',  π[v] = u':'✗ без змін',W*.58,y+28*K,'left')}ctx.globalAlpha=1}
+function bs0(w,h,st){sceneTitle('Задача: найкоротші шляхи',st);ED=ED1;
+  ED1.forEach((e,k)=>edge(k,'#94a3b8',stag(st,2+k*.9,.5),3,bm(e[2])));
+  [0,1,2,3,4].forEach(i=>node(i,stag(st,.3+i*.4,.5),i===0?GR:null,i===0?'старт':null));
+  [['Дейкстра: від’ємні ваги ✗',RED],['Беллман—Форд: так ✓',GR]].forEach((a,i)=>{const p=eob(stag(st,15+i*4,.5));if(p>0){const y=H*.3+i*H*.18;
+    ctx.globalAlpha=Math.min(1,p);card(W*.6,y,W*.34,H*.12);fnt(21,true);ctx.fillStyle=a[1];txt(a[0],W*.77,y+H*.075);ctx.globalAlpha=1}});
+  caption('ваги ребер можуть бути від’ємними',st,9,H*.92)}
+function bs1(w,h,st){sceneTitle('Релаксація ребра',st);bfRelax(H*.34,5,-2,9,2,st);bfRelax(H*.7,5,7,9,17,st)}
+function bs2(w,h,st){const d=st<14?['?','?','?','?','?']:st<17.5?[0,'?','?','?','?']:BI;
+  bfDraw(ED1,d,BN,null,-1,{},st,'Крок 0: ініціалізація',null);shock(P(0)[0],P(0)[1],st,14,GR,100);
+  if(st>17.5)[1,2,3,4].forEach(i=>shock(P(i)[0],P(i)[1],st,17.5+i*.2,'#64748b',70))}
+function bs7(w,h,st){const S=BS1[19],ov={};if(st>17)[0,1,2,3].forEach(k=>ov[k]=GR);bfDraw(ED1,S.d,S.pr,null,-1,{},st,'Результат і шлях',ov);
+  let v=4;for(let i=0;i<4;i++){const p=S.pr[v],t0=9+i*1.8;if(st>t0){const A=P(v),B=P(p);pointer(A[0],A[1],B[0],B[1],st,t0)}v=p}
+  if(st>17){const u=((st-17)*.5)%4,sg=Math.floor(u),p=bz(E([3,2,1,0][sg]),eio(u-sg));coin(p[0],p[1],1.1)}
+  stamp('1 → 2 → 3 → 4 → 5,  довжина 2',W*.3,H*.9,26,GR,st,17.5,-.05)}
+function bs9(w,h,st){bfView(ED2,BS2,24,30,9,2.2,st,'Додаємо ребро 5 → 2',{5:RED});shock(W*.36,H*.48,st,1.5,RED,120);
+  stamp('Негативний цикл!',W*.3,H*.9,30,RED,st,22.5,-.05)}
+function bs10(w,h,st){const S=BS2[23],f=BS2.slice(24).find(s=>s.ok),ov={};let x=ED2[f.k][1];const wk=[x];for(let i=0;i<5;i++){x=S.pr[x];wk.push(x)}
+  const cy=[x];for(let y=S.pr[x];y!==x;y=S.pr[y])cy.push(y);cy.reverse();const ck=cy.map((a,i)=>ED2.findIndex(e=>e[0]===a&&e[1]===cy[(i+1)%cy.length]));
+  if(st>14)ck.forEach(k=>ov[k]=RED);bfDraw(ED2,S.d,S.pr,null,-1,{},st,'Знаходимо цикл',ov);
+  for(let i=0;i<5;i++){const t0=4+i*1.7;if(st>t0){const A=P(wk[i]),B=P(wk[i+1]);pointer(A[0],A[1],B[0],B[1],st,t0)}}
+  if(st>14){const u=((st-14)*.6)%ck.length,sg=Math.floor(u),p=bz(E(ck[sg]),eio(u-sg));coin(p[0],p[1],1.1)}
+  stamp('цикл '+cy.map(a=>a+1).join(' → ')+' → '+(cy[0]+1)+',  сума −2',W*.3,H*.9,24,RED,st,14.5,-.05)}
+function bs11(w,h,st){sceneTitle('Підсумок',st);
+  ['Старт: d[s] = 0, решта — ∞','V−1 ітерацій: релаксація всіх ребер','V-та ітерація: є покращення → негативний цикл','Складність O(V·E); від’ємні ваги — не проблема'].forEach((s,i)=>{
+    const p=eob(stag(st,[3,7,11,16][i],.5));if(p>0){const y=H*.2+i*H*.17;ctx.globalAlpha=Math.min(1,p);card(W*.15+(1-p)*80,y,W*.7,H*.13);
+      fnt(24,true);ctx.fillStyle=i===3?'#1e40af':'#1e293b';txt(s,W*.5+(1-p)*80,y+H*.08);ctx.globalAlpha=1}});
+  stamp('А тепер — назад до грошей!',W*.5,H*.92,30,GR,st,19,-.05)}
+const rv=(n,lo,T,dt)=>(w,h,st)=>bfView(ED1,BS1,lo,lo+5,T,dt,st,'Ітерація '+n,null);
+const bsFast=(w,h,st)=>{bfView(ED1,BS1,5,20,3,.6,st,'Ітерації 2–4: прискорено',null);if(st>3&&st<12){fnt(20,true);ctx.fillStyle='#7c3aed';txt('»» перемотуємо »»',W*.4,H*.16)}};
+const scenesA=[
+ {tick:'Алгоритм',dur:26,draw:bs0,text:"Забудьмо на хвилину про гроші й розберемо алгоритм на чистих числах. Є орієнтований граф, а ваги його ребер можуть бути від'ємними. Алгоритм Беллмана — Форда знаходить найкоротші відстані від вершини один до всіх інших, а заодно виявляє цикли від'ємної ваги. Жадібний алгоритм Дейкстри тут помиляється."},
+ {tick:'Релаксація',dur:28,draw:bs1,text:"Головна операція — релаксація. Беремо ребро з u у v вагою мінус два. Якщо відстань до u плюс вага менша за поточну відстань до v — ми знайшли коротший шлях: оновлюємо відстань і запам'ятовуємо попередника: пі від v дорівнює u — вершина, з якої ми прийшли. А якщо шлях не кращий, як у другому прикладі, — нічого не змінюємо."},
+ {tick:'Старт',dur:23,draw:bs2,text:"Крок нуль. Для кожної вершини зберігаємо два значення: поточну оцінку відстані d і попередника, його позначають літерою пі — це вершина, з якої ми прийшли. Спершу ми знаємо лише одне: до стартової вершини відстань нуль. До всіх інших — нескінченність, і попередників ще немає."},
+ {tick:'Ітерація 1',dur:26,draw:rv(1,0,5,3.6),text:"Основний цикл — чотири ітерації, адже вершин п'ять. У кожній проходимо всі ребра в одному й тому самому порядку, він показаний праворуч. Перші три ребра нічого не дають: їхні початки ще недосяжні. Четверте дає вершині два відстань п'ять, п'яте — вершині три відстань дев'ять."},
+ {tick:'Ітерації 2–4',dur:24,draw:bsFast,text:"Аналогічно повторюємо ще три ітерації: ті самі ребра, той самий порядок. Прокрутимо їх швидко — відстані доходять до кінцевих значень. Чому саме чотири ітерації? Найкоротший шлях не повторює вершин, тож має щонайбільше чотири ребра — на одне менше, ніж вершин. А кожна ітерація дотягує правильну відстань ще на одне ребро вперед."},
+ {tick:'Шлях',dur:24,draw:bs7,text:"Усі відстані знайдено: нуль, п'ять, три, нуль, два. А як побачити сам шлях? Для кожної вершини ми запам'ятали попередника. Йдемо назад від п'ятої: четверта, третя, друга, перша. Це найкоротший шлях, його довжина — два."},
+ {tick:'Перевірка',dur:20,draw:(w,h,st)=>bfView(ED1,BS1,20,25,6,1.8,st,'Перевірка на цикл',null)||(st>15&&stamp('Покращень немає — циклу нема ✓',W*.3,H*.9,26,GR,st,15.5,-.05)),text:"Тепер перевірка на цикл: ще одна, п'ята ітерація, але вже без оновлень. Якщо хоч одне ребро ще можна покращити — у графі є негативний цикл. Тут жодне не покращується, тож циклу немає, і відповідь коректна."},
+ {tick:'Цикл',dur:26,draw:bs9,text:"А тепер додамо ребро з п'ятої вершини у другу вагою один. З'явився цикл: два, три, чотири, п'ять із сумою мінус два. Після чотирьох ітерацій виконуємо перевірку: ребро два — три ще покращує відстань! Це і є негативний цикл."},
+ {tick:'Пошук циклу',dur:22,draw:bs10,text:"Щоб побачити сам цикл, ідемо назад по попередниках щонайменше V разів — так ми точно потрапимо всередину циклу. Далі обходимо його, поки не повернемось: два, три, чотири, п'ять. Кожен обхід зменшує суму ще на два."},
+ {tick:'Підсумок',dur:24,draw:bs11,text:"Підсумуємо. Ставимо нуль у старті й нескінченність в решті. Чотири ітерації релаксують усі ребра. П'ята перевіряє: є покращення — є негативний цикл. Складність — число вершин на число ребер, а від'ємні ваги — не проблема. А тепер повернімось до грошей."}];
+
+function appNet(x,y,w,h,gt){const N=[[.12,.4],[.45,.14],[.85,.3],[.25,.85],[.7,.82]],L=[[0,1],[1,2],[0,3],[1,3],[1,4],[2,4],[3,4]],q=a=>[x+a[0]*w,y+a[1]*h];
+  ctx.strokeStyle='#94a3b8';ctx.lineWidth=2.5*K;L.forEach(l=>{const a=q(N[l[0]]),b=q(N[l[1]]);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke()});
+  L.forEach((l,i)=>{const a=q(N[l[0]]),b=q(N[l[1]]),t=(gt*.45+i*.31)%1;ctx.fillStyle='#f97316';ctx.fillRect(a[0]+(b[0]-a[0])*t-5*K,a[1]+(b[1]-a[1])*t-4*K,10*K,8*K)});
+  N.forEach(n=>{const p=q(n);ctx.fillStyle='#dbeafe';rr(p[0]-16*K,p[1]-11*K,32*K,22*K,5);ctx.fill();ctx.strokeStyle='#1d4ed8';ctx.lineWidth=2*K;ctx.stroke();
+    ctx.beginPath();ctx.moveTo(p[0],p[1]-11*K);ctx.lineTo(p[0],p[1]-20*K);ctx.stroke();ctx.fillStyle='#1d4ed8';[-7,0,7].forEach(o=>ctx.fillRect(p[0]+o*K-1.5*K,p[1]-2*K,3*K,5*K))})}
+function appCar(x,y,w,h,gt){const f=u=>y+h*(.5-.3*Math.sin(2*Math.PI*u*.9));ctx.strokeStyle='#16a34a';ctx.lineWidth=4*K;ctx.beginPath();
+  for(let i=0;i<=40;i++){const u=i/40;i?ctx.lineTo(x+u*w,f(u)+8*K):ctx.moveTo(x+u*w,f(u)+8*K)}ctx.stroke();
+  const u=(gt*.12)%1,cx=x+u*w,cy=f(u),an=Math.atan2(f(u+.01)-f(u),.01*w),dn=u>.28&&u<.83;
+  ctx.save();ctx.translate(cx,cy);ctx.rotate(an);ctx.fillStyle=dn?'#16a34a':'#475569';rr(-18*K,-14*K,36*K,16*K,4);ctx.fill();
+  ctx.fillStyle='#1e293b';[-11,11].forEach(o=>{ctx.beginPath();ctx.arc(o*K,3*K,5*K,0,TAU);ctx.fill()});ctx.restore();
+  if(dn){fnt(17,true);ctx.fillStyle='#16a34a';txt('w = −3',cx,cy-26*K)}}
+function appPlan(x,y,w,h,t,gt){const N=[[.15,.78],[.5,.18],[.85,.78]],Wt=['+2','−5','+2'],Ln=['A','B','C'],q=a=>[x+a[0]*w,y+a[1]*h],bad=t>5,col=bad?RED:'#94a3b8';
+  for(let i=0;i<3;i++){const a=q(N[i]),b=q(N[(i+1)%3]),dx=b[0]-a[0],dy=b[1]-a[1],l=Math.hypot(dx,dy),ux=dx/l,uy=dy/l,r=17*K,x1=a[0]+ux*r,y1=a[1]+uy*r,x2=b[0]-ux*r,y2=b[1]-uy*r;
+    ctx.strokeStyle=col;ctx.lineWidth=(bad?4+Math.sin(gt*8):3)*K;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();arrowHead(x2,y2,Math.atan2(dy,dx),9*K,col,1);
+    fnt(15,true);ctx.fillStyle=col;txt(Wt[i],(x1+x2)/2+uy*16*K,(y1+y2)/2-ux*16*K+5*K)}
+  N.forEach((n,i)=>{const p=q(n);ctx.beginPath();ctx.arc(p[0],p[1],17*K,0,TAU);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle='#334155';ctx.lineWidth=2.5*K;ctx.stroke();fnt(18,true);ctx.fillStyle='#1e293b';txt(Ln[i],p[0],p[1]+6*K)});
+  if(bad){fnt(16,true);ctx.fillStyle=RED;txt('Σ = −1 < 0',x+w/2,y+h*.56)}}
+function s8(w,h,st,gt){sceneTitle('Де ще працює алгоритм',st);
+  const cw=W*.3,ch=H*.6,y0=H*.2,X=[W*.035,W*.35,W*.665],T=[3,11,19],
+  TT=['Маршрутизація в інтернеті','Навігація електромобіля','Планування проєктів'],
+  SB=[['RIP: роутери обмінюються','оцінками відстаней із сусідами'],['спуск повертає енергію —','ребро з від’ємною вагою'],['обмеження на терміни;','від’ємний цикл = суперечність']];
+  for(let i=0;i<3;i++){const p=eob(stag(st,T[i],.6));if(p<=0)continue;ctx.save();ctx.globalAlpha=Math.min(1,p);ctx.translate(0,(1-p)*40);
+    card(X[i],y0,cw,ch);fnt(20,true);ctx.fillStyle='#1e293b';txt(TT[i],X[i]+cw/2,y0+30*K);
+    const px=X[i]+cw*.08,py=y0+50*K,pw=cw*.84,ph=ch*.52;
+    if(i===0)appNet(px,py,pw,ph,gt);else if(i===1)appCar(px,py,pw,ph,gt);else appPlan(px,py,pw,ph,st-T[2],gt);
+    fnt(15);ctx.fillStyle='#475569';txt(SB[i][0],X[i]+cw/2,y0+ch-44*K);txt(SB[i][1],X[i]+cw/2,y0+ch-22*K);ctx.restore()}
+  stamp('Дякую за увагу!',W/2,H*.92,34,'#e11d48',st,27,-.05);confetti(W/2,H*.9,st,27,70)}
+
+const scenes=[].concat(scenesC.slice(0,4).map(s=>({...s,draw:wrapG('c',s.draw)})),scenesA.map(s=>({...s,draw:wrapG('a',s.draw)})),scenesC.slice(4).map(s=>({...s,draw:wrapG('c',s.draw)})),
+ [{tick:'Застосування',dur:30,draw:wrapG('c',s8),text:"Де ще працює цей алгоритм? У маршрутизації інтернету: роутери обмінюються оцінками відстаней із сусідами — так працює протокол RIP. У навігації електромобілів: спуск повертає енергію, і ребро отримує від'ємну вагу. У плануванні проєктів: вимоги до термінів — це нерівності, а негативний цикл означає, що вимоги суперечать одна одній. Дякую за увагу!"}]);
+const cum=[];let acc0=0;scenes.forEach(s=>{cum.push(acc0);acc0+=s.dur});
+const TOTAL=acc0;
+
+/* ================= TTS (гібрид) ================= */
+const synth=window.speechSynthesis;
+let engine='google',userPicked=false,gAudio=null,gToken=0;
+let voiceScene=-1,ttsDone=true,ttsActive=false;
+function detect(){if(userPicked)return;const vs=(synth&&synth.getVoices?synth.getVoices():[])||[];
+  const uk=vs.some(v=>v.lang&&v.lang.toLowerCase().startsWith('uk'));
+  updateEngineUI()}
+if(synth){detect();if(synth.onvoiceschanged!==undefined)synth.onvoiceschanged=detect}
+function updateEngineUI(){engineSeg.querySelectorAll('button').forEach(b=>
+  b.classList.toggle('on',b.dataset.e===engine))}
+function splitChunks(text,maxLen){const ss=text.match(/[^.!?]+[.!?]+/g)||[text];
+  const out=[];let cur='';ss.forEach(s=>{if((cur+s).length>maxLen&&cur){out.push(cur.trim());cur=s}else cur+=s});
+  if(cur)out.push(cur.trim());return out}
+/* ---- Google TTS (неофіційний): два ендпоїнти, при збої → відкат на Web Speech ---- */
+const G_URLS=[
+  q=>'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=uk&q='+encodeURIComponent(q),
+  q=>'https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=uk&q='+encodeURIComponent(q)];
+let gIdx=0,gOk=false;
+function ukVoice(){const vs=(synth&&synth.getVoices?synth.getVoices():[])||[];
+  return vs.find(v=>v.lang&&v.lang.toLowerCase().replace('_','-').startsWith('uk'))||null}
+/* Результат: 'ok' | 'fail' (помилка або 6 с без старту) | 'skip' (браузер заблокував автоплей) */
+function gPlay(url){return new Promise(res=>{
+  const a=new Audio(url);gAudio=a;let fin=false,started=false;
+  const end=r=>{if(!fin){fin=true;clearTimeout(tm);res(r)}};
+  const tm=setTimeout(()=>{if(!started){try{a.pause()}catch(e){}end('fail')}},6000);
+  a.onplaying=()=>{started=true;clearTimeout(tm);gOk=true};
+  a.onended=()=>end('ok');
+  a.onerror=()=>end(started?'ok':'fail');
+  a.play().catch(e=>{const n=e&&e.name;if(n==='NotAllowedError')end('skip');else if(n!=='AbortError')end('fail')})})}
+function gFallback(rest,idx){
+  console.warn('Google TTS недоступний → відкат на Web Speech');
+  hfMsg='⚠ Google TTS недоступний → Web Speech';
+  engine='webspeech';updateEngineUI();
+  if(rest&&rest.trim())speak(rest,idx);else{if(voiceScene===idx){ttsDone=true;ttsActive=false}}}
+function speak(text,sceneIdx){voiceScene=sceneIdx;ttsDone=false;ttsActive=true;
+  const done=()=>{if(voiceScene===sceneIdx){ttsDone=true;ttsActive=false}};
+  if(engine==='none'){ttsDone=true;ttsActive=false;return}
+  if(engine==='webspeech'){const v=synth&&ukVoice();
+    if(!v){engine='none';updateEngineUI();hfMsg='⚠ Немає українського голосу → тихо';done();return}
+    try{if(synth.speaking||synth.pending)synth.cancel()}catch(e){}
+    const u=new SpeechSynthesisUtterance(text);u.voice=v;u.lang=v.lang;
+    u.rate=clamp(0.95*speed,0.5,2);u.pitch=1;
+    u.onend=done;u.onerror=e=>{console.warn('Web Speech:',e&&e.error);done()};
+    synth.speak(u);if(synth.paused)synth.resume()}
+  else if(engine==='hf'){const myTok=++gToken;hfWait=true;
+    (async()=>{
+      if(!await hfEnsure()){if(myTok===gToken)hfFallback(text,sceneIdx);return}
+      /* у черзі лишаємо лише потрібне: ця сцена + наступна (після перемотування старі заявки не гальмують нові) */
+      {const want=new Set(),vv=hfVoiceSel.value;
+        [sceneIdx,sceneIdx+1].forEach(j=>{const s=scenes[j];if(s)hfSplit(s.text,110).forEach(c=>want.add(vv+'|'+c))});
+        hfPending.forEach(j=>{if(!want.has(j.key)){j.skipped=true;hfCache.delete(j.key);hfPending.delete(j)}})}
+      const ch=hfSplit(text,110),ps=ch.map(c=>hfSynth(c));ps.forEach(p=>p.catch(()=>{}));
+      hfPrefetch(sceneIdx+1); /* уся наступна сцена генерується, поки звучить поточна */
+      for(let i=0;i<ch.length;i++){let url;
+        if(i>0)hfWait=true;try{url=await ps[i]}catch(e){console.error('UA нейро:',e);if(myTok===gToken)hfFallback(text,sceneIdx);return}
+        if(myTok!==gToken)return;
+        hfWait=false;
+        await new Promise(res=>{const a=new Audio(url);a.playbackRate=speed;gAudio=a;
+          const txt=ch[i];a.addEventListener('loadedmetadata',()=>console.log('[UA нейро]',txt.length,'знаків →',a.duration.toFixed(1),'с:',txt));
+          a.onended=res;a.onerror=res;
+          const pl=a.play();if(pl)pl.catch(e=>{if(!(e&&e.name==='AbortError'))res()});
+          if(isPaused)a.pause()});
+        if(myTok!==gToken)return}
+      done()})().catch(e=>{console.error(e);hfWait=false;done()})}
+  else{const myTok=++gToken,ch=splitChunks(text,180);
+    (async()=>{
+      for(let i=0;i<ch.length;i++){let r='fail';
+        for(let k=0;k<G_URLS.length&&r==='fail';k++){const ix=(gIdx+k)%G_URLS.length;
+          r=await gPlay(G_URLS[ix](ch[i]));
+          if(myTok!==gToken)return;
+          if(r!=='fail')gIdx=ix}
+        if(r==='fail'){gFallback(ch.slice(i).join(' '),sceneIdx);return}}
+      done()})().catch(e=>{console.error(e);done()})}}
+/* ---- UA нейро: демо robinhad/ukrainian-tts на Hugging Face (відкат -> Google TTS) ---- */
+const HF_SPACE='robinhad/ukrainian-tts',HF_HOST='https://robinhad-ukrainian-tts.hf.space',
+  HF_CLIENT='https://cdn.jsdelivr.net/npm/@gradio/client@2.6.0/dist/index.min.js';
+const hfVoiceSel=document.getElementById('hfVoice');
+let hfApp=null,hfConn=null,hfMsg='',hfWait=false,hfQ=Promise.resolve(),hfApi='/predict';const hfCache=new Map(),hfPending=new Set();
+const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout '+ms)),ms))]);
+function hfEnsure(){if(hfConn)return hfConn;
+  hfConn=(async()=>{hfMsg='⏳';const m=await import(HF_CLIENT);
+    hfApp=await withTimeout(m.Client.connect(HF_SPACE),60000);hfMsg='';return true})()
+    .catch(e=>{console.error('UA нейро:',e);hfMsg='⚠ UA нейро недоступне → Google';hfConn=null;return false});
+  return hfConn}
+/* Забираємо аудіо в blob (кеш у пам'яті): коли дійде до сцени, воно вже в браузері. Якщо CORS не дозволяє — лишаємо звичайний URL */
+async function hfBlob(u){try{const r=await withTimeout(fetch(u),30000);if(!r.ok)throw new Error(r.status);
+  return URL.createObjectURL(await r.blob())}catch(e){return u}}
+function hfSynth(t){const v=hfVoiceSel.value,k=v+'|'+t;if(hfCache.has(k))return hfCache.get(k);
+  const job={key:k,started:false,skipped:false};hfPending.add(job);
+  const run=hfQ=hfQ.catch(()=>{}).then(async()=>{hfPending.delete(job);
+    if(job.skipped)throw new Error('skipped');job.started=true;let last;
+    for(const n of [hfApi,'/tts']){const t0=Date.now();
+      try{const r=await withTimeout(hfApp.predict(n,[t,v]),90000);
+        const f=r&&r.data&&r.data[0];const u=f&&(f.url||(f.path&&HF_HOST+'/file='+f.path));
+        if(!u)throw new Error('немає аудіо у відповіді');hfApi=n;return u}
+      catch(e){last=e;if(Date.now()-t0>4000)break}}
+    throw last});
+  const pr=run.then(hfBlob);
+  hfCache.set(k,pr);pr.catch(()=>{if(hfCache.get(k)===pr)hfCache.delete(k)});return pr}
+function hfPrefetch(i){const s=scenes[i];if(!s)return;hfSplit(s.text,110).forEach(c=>hfSynth(c).catch(()=>{}))}
+/* Ділимо лише за межами речень (. ! ? …): кома чи тире всередині речення не повинні ставати «крапкою».
+   Короткі сусідні речення склеюємо до max знаків. Дуже довге речення (>220) ділимо лише за ; або : */
+function hfSplit(text,max){
+  const ss=(text.match(/[^.!?…]+[.!?…]+["»”)]*|[^.!?…]+$/g)||[text]).map(x=>x.trim()).filter(Boolean);
+  const out=[];
+  ss.forEach(x=>{if(x.length<=220){out.push(x);return}
+    let cur='';x.split(/(?<=[;:])\s+/).forEach(q=>{
+      if(cur&&(cur+' '+q).length>max){out.push(cur);cur=q}else cur=cur?cur+' '+q:q});
+    if(cur)out.push(cur)});
+  const m=[];out.forEach(q=>{if(m.length&&(m[m.length-1]+' '+q).length<=max)m[m.length-1]+=' '+q;else m.push(q)});
+  return m.length?m:[text]}
+function hfFallback(text,idx){hfWait=false;engine='google';updateEngineUI();
+  if(!hfMsg)hfMsg='⚠ UA нейро недоступне → Google';speak(text,idx)}
+hfVoiceSel.onchange=()=>{if(engine==='hf'&&isPlaying&&!isPaused){stopSpeaking();speakScene()}};
+
+function stopSpeaking(){hfWait=false;gToken++;if(gAudio){gAudio.pause();gAudio=null}
+  if(synth){try{synth.cancel()}catch(e){}}
+  ttsActive=false;ttsDone=true}
+
+/* ================= ПЛЕЄР ================= */
+let currentScene=0,sceneTime=0,globalTime=0,isPlaying=false,isPaused=false,
+    hasStarted=false,finished=false,holdTimer=0,speed=1;
+function setPlayIcon(playing){icoPlay.style.display=playing?'none':'';
+  icoPause.style.display=playing?'':'none'}
+function setSubtitle(sc){if(chkSubs.checked){subtitleEl.innerHTML=sc.text;
+  subtitleEl.style.opacity='1'}else subtitleEl.style.opacity='0'}
+function startScene(i){currentScene=clamp(i,0,scenes.length-1);sceneTime=0;holdTimer=0;
+  const sc=scenes[currentScene];setSubtitle(sc);stopSpeaking();
+  if(isPlaying)speak(sc.text,currentScene);updateSceneButtons()}
+function speakScene(){const sc=scenes[currentScene];setSubtitle(sc);speak(sc.text,currentScene)}
+function startShow(){hasStarted=true;finished=false;isPlaying=true;isPaused=false;
+  setPlayIcon(true);startScene(0)}
+function doPause(){isPaused=true;setPlayIcon(false);
+  if(engine==='webspeech'&&synth)synth.pause();
+  if((engine==='google'||engine==='hf')&&gAudio)gAudio.pause()}
+function doResume(){isPaused=false;setPlayIcon(true);
+  if(engine==='webspeech'&&synth)synth.resume();
+  if((engine==='google'||engine==='hf')&&gAudio)gAudio.play()}
+function togglePlay(){if(!hasStarted){startShow();return}
+  if(!isPlaying){finished=false;isPlaying=true;isPaused=false;setPlayIcon(true);speakScene();return}
+  isPaused?doResume():doPause()}
+function stopShow(){isPlaying=false;isPaused=false;finished=false;setPlayIcon(false);
+  stopSpeaking();currentScene=0;sceneTime=0;holdTimer=0;
+  subtitleEl.style.opacity='0';updateSceneButtons()}
+function seekScene(i){i=clamp(i,0,scenes.length-1);stopSpeaking();finished=false;
+  currentScene=i;sceneTime=0;holdTimer=0;updateSceneButtons();
+  if(isPlaying&&!isPaused)speakScene();else setSubtitle(scenes[i])}
+function seekTime(T){let i=0;while(i<scenes.length-1&&T>=cum[i+1])i++;
+  stopSpeaking();finished=false;currentScene=i;sceneTime=T-cum[i];holdTimer=0;
+  updateSceneButtons();if(isPlaying&&!isPaused)speakScene();else setSubtitle(scenes[i])}
+
+/* ================= ОБРОБНИКИ ================= */
+btnPlay.onclick=togglePlay;
+btnStop.onclick=stopShow;
+btnNext.onclick=()=>seekScene(currentScene+1);
+btnPrev.onclick=()=>seekScene(currentScene-1);
+progressZone.onclick=e=>{const r=progressZone.getBoundingClientRect();
+  seekTime(clamp((e.clientX-r.left)/r.width,0,1)*TOTAL)};
+engineSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{userPicked=true;
+  engine=b.dataset.e;if(engine!=='hf')hfMsg='';updateEngineUI();stopSpeaking();if(engine==='hf')hfEnsure();
+  if(isPlaying&&!isPaused)speakScene()});
+speedSel.onchange=()=>{speed=parseFloat(speedSel.value)};
+chkSubs.onchange=()=>{if(!chkSubs.checked)subtitleEl.style.opacity='0';
+  else setSubtitle(scenes[currentScene])};
+chkDebug.onchange=()=>{debugSection.style.display=chkDebug.checked?'block':'none'};
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'){e.preventDefault();togglePlay()}
+  else if(e.code==='ArrowRight')seekScene(currentScene+1);
+  else if(e.code==='ArrowLeft')seekScene(currentScene-1);
+  else if(e.code==='KeyR')stopShow()});
+canvas.addEventListener('click',()=>{if(!hasStarted)startShow()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)lastTs=performance.now()});
+
+/* ================= ЗАСІЧКИ / ДЕБАГ ================= */
+const tickEls=[];
+scenes.forEach((sc,i)=>{const t=document.createElement('div');t.className='tick';
+  t.style.left=(cum[i]/TOTAL*100)+'%';t.title=(i+1)+'. '+sc.tick+' ('+sc.dur+' с)';
+  t.onclick=e=>{e.stopPropagation();seekScene(i)};ticksLayer.appendChild(t);tickEls.push(t);
+  const l=document.createElement('div');l.className='tick-label';l.style.left=(cum[i]/TOTAL*100)+'%';
+  l.textContent=sc.tick;ticksLayer.appendChild(l)});
+function updateLabelsVis(){ticksLayer.querySelectorAll('.tick-label').forEach(l=>
+  l.style.display=chkLabels.checked?'':'none')}
+chkLabels.onchange=updateLabelsVis;updateLabelsVis();
+scenes.forEach((sc,i)=>{const b=document.createElement('button');
+  b.textContent=fmt(cum[i])+' · '+sc.tick;b.onclick=()=>seekScene(i);
+  sceneListEl.appendChild(b)});
+function updateSceneButtons(){sceneListEl.querySelectorAll('button').forEach((b,i)=>
+  b.classList.toggle('active',i===currentScene));
+  sceneIndicator.textContent=(currentScene+1)+'/'+scenes.length+' · '+scenes[currentScene].tick}
+function fmt(s){s=Math.floor(s);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function updateHud(){const sc=scenes[currentScene];
+  const cur=cum[currentScene]+Math.min(sceneTime,sc.dur);
+  progressFill.style.width=(cur/TOTAL*100)+'%';
+  timeDisp.textContent=fmt(cur)+' / '+fmt(TOTAL);
+  tickEls.forEach((t,i)=>t.classList.toggle('active',i===currentScene));
+  voiceState.textContent=(engine==='none'?'🔇':(ttsActive?'🔊':'🔈'))+(hfMsg?' '+hfMsg:'');
+  voiceState.classList.toggle('active',ttsActive)}
+updateSceneButtons();
+
+/* ================= ГОЛОВНИЙ ЦИКЛ ================= */
+let lastTs=performance.now();
+function overlayStart(){ctx.fillStyle='rgba(8,12,26,.55)';ctx.fillRect(0,0,W,H);
+  const pu=1+0.05*Math.sin(performance.now()/300);
+  ctx.save();ctx.translate(W/2,H/2-30);ctx.scale(pu,pu);
+  ctx.beginPath();ctx.arc(0,0,54,0,TAU);ctx.fillStyle='rgba(255,255,255,.95)';ctx.fill();
+  ctx.strokeStyle='#e11d48';ctx.lineWidth=5;ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-14,-22);ctx.lineTo(-14,22);ctx.lineTo(24,0);ctx.closePath();
+  ctx.fillStyle='#e11d48';ctx.fill();ctx.restore();
+  fnt(22,true);ctx.fillStyle='#fff';txt('Натисніть, щоб дивитись з озвученням',W/2,H/2+70);
+  fnt(15);ctx.fillStyle='rgba(255,255,255,.85)';
+  txt('Space — пауза · ←/→ — сцени · клік по шкалі — перемотка',W/2,H/2+102)}
+
+function frame(ts){const rawDt=Math.min(0.1,(ts-lastTs)/1000);lastTs=ts;
+  if(isPlaying&&!isPaused&&!(engine==='hf'&&hfWait)){const dt=rawDt*speed;globalTime+=dt;sceneTime+=dt;
+    const sc=scenes[currentScene];
+    const animDone=sceneTime>=sc.dur;
+    const voiceOK=engine==='none'||ttsDone||sceneTime>sc.dur+(engine==='webspeech'?30:60);
+    if(animDone&&voiceOK){holdTimer+=dt;
+      if(holdTimer>=0.7){
+        if(currentScene<scenes.length-1)startScene(currentScene+1);
+        else{finished=true;isPlaying=false;isPaused=false;setPlayIcon(false);stopSpeaking()}}}
+    else holdTimer=0}
+  gtNow=globalTime; /* критично: мерехтіння ліхтарів, курсор, шеврони, сніг */
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#fbf7f0');g.addColorStop(1,'#f2ebdd');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  scenes[currentScene].draw(W,H,sceneTime,globalTime);
+  const f=1-stag(sceneTime,0,0.45);
+  if(f>0&&hasStarted){ctx.fillStyle='rgba(251,247,240,'+f*0.6+')';ctx.fillRect(0,0,W,H)}
+  if(hasStarted&&engine==='hf'&&hfWait){ctx.fillStyle='rgba(30,30,30,.75)';ctx.font='bold 16px Arial';ctx.textAlign='left';ctx.fillText('Готую озвучення…',16,H-16)}
+  if(!hasStarted)overlayStart();
+  updateHud();
+  requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
