@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MathToons - Освітні мультики-симулятори</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased selection:bg-brand-500 selection:text-white">
+
+    <!-- Верхня навігаційна панель -->
+    <header class="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <!-- Логотип -->
+            <div class="flex items-center space-x-8">
+                <a href="#" class="flex items-center space-x-2">
+                    <div class="bg-brand-600 text-white p-2 rounded-xl font-black text-xl flex items-center justify-center shadow-md shadow-brand-600/20">
+                        <i class="fa-solid fa-play"></i>
+                    </div>
+                    <span class="text-xl font-extrabold tracking-tight text-slate-900">MathToons</span>
+                </a>
+                <!-- Меню -->
+                <nav class="hidden md:flex space-x-6 text-sm font-semibold text-slate-600">
+                    <a href="#" class="text-brand-600 font-bold transition">Головна</a>
+                    <a href="#catalog" class="hover:text-brand-600 transition">Усі симулятори</a>
+                    <a href="#" class="hover:text-brand-600 transition">Теорія графів</a>
+                    <a href="#" class="hover:text-brand-600 transition">Алгоритми</a>
+                </nav>
+            </div>
+
+            <!-- Пошук та профіль -->
+            <div class="flex items-center space-x-4">
+                <div class="relative hidden sm:block">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                        <i class="fa-solid fa-search text-xs"></i>
+                    </span>
+                    <input type="text" id="searchInput" placeholder="Шукати симулятор..." class="bg-slate-100 text-sm text-slate-800 rounded-full pl-9 pr-4 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500 border border-slate-200 w-64 placeholder-slate-400">
+                </div>
+                <button class="bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-4 py-2 rounded-full transition shadow-md shadow-brand-600/20">
+                    Кабінет
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Головний контент -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-12">
+
+        <!-- Головний банер (Featured Hero) -->
+        <section class="relative rounded-3xl overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border border-slate-800 shadow-xl">
+            <div class="absolute inset-0 opacity-20 bg-[radial-gradient(#22c55e_1px,transparent_1px)] [background-size:16px_16px]"></div>
+            <div class="relative z-10 p-8 sm:p-12 lg:p-16 max-w-2xl space-y-6">
+                <span class="bg-brand-500/20 text-brand-300 border border-brand-500/30 text-xs font-bold uppercase px-3 py-1 rounded-full">
+                    Хіт інтерактивної математики • Парадокс Браєса
+                </span>
+                <h1 class="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight">
+                    Коли побудова нової дороги робить тільки гірше?
+                </h1>
+                <p class="text-slate-300 text-base sm:text-lg">
+                    Керуйте потоком машин у місті та на власні очі переконайтеся, чому додавання ще однієї магістралі може створити суцільні затори.
+                </p>
+                <div class="flex flex-wrap gap-4 pt-2">
+                    <a href="BraessParadoxCartoon.html" class="bg-brand-500 hover:bg-brand-600 text-slate-950 font-bold px-6 py-3 rounded-xl flex items-center space-x-2 transition shadow-lg shadow-brand-500/20">
+                        <i class="fa-solid fa-play"></i>
+                        <span>Запустити симулятор</span>
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- Каталог симуляторів -->
+        <section id="catalog" class="space-y-6">
+            <div class="flex items-center justify-between">
+                <h2 class="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+                    <i class="fa-solid fa-film text-brand-600"></i> Каталог мультків-симуляторів
+                </h2>
+                <span class="text-sm font-medium text-slate-500">Всього: 6 інтерактивних історій</span>
+            </div>
+
+            <!-- Сітка карток -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+
+                <!-- Картка 1: Парадокс Браєса -->
+                <div class="group bg-white border border-slate-200 rounded-2xl overflow-hidden hover:shadow-xl hover:border-slate-300 transition-all duration-200 flex flex-col">
+                    <div class="h-44 bg-indigo-50 relative p-6 flex items-center justify-center border-b border-slate-100">
+                        <i class="fa-solid fa-road text-5xl text-indigo-600 group-hover:scale-110 transition duration-300"></i>
+                        <span class="absolute top-3 right-3 bg-white/90 backdrop-blur text-xs font-semibold px-2.5 py-1 rounded-lg text-indigo-700 border border-indigo-100 shadow-sm">Теорія ігор</span>
+                    </div>
+                    <div class="p-6 flex flex-col flex-grow justify-between space-y-4">
+                        <div class="space-y-2">
+                            <h3 class="text-lg font-bold text-slate-900 group-hover:text-brand-600 transition">Парадокс Браєса</h3>
+                            <p class="text-slate-600 text-sm leading-relaxed">Як оптимізація окремих доріг може сповільнити весь транспортний потік містом.</p>
+                        </div>
+                        <a href="BraessParadoxCartoon.html" class="w-full bg-slate-100 hover:bg-brand-600 hover:text-white text-slate-800 font-semibold py-2.5 rounded-xl text-sm flex items-center justify-center space-x-2 transition">
+                            <i class="fa-solid fa-play text-xs"></i>
+                            <span>Дивитися симулятор</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Картка 2: Китайська теорема про залишки -->
+                <div class="group bg-white border border-slate-200 rounded-2xl overflow-hidden hover:shadow-xl hover:border-slate-300 transition-all duration-200 flex flex-col">
+                    <div class="h-44 bg-amber-50 relative p-6 flex items-center justify-center border-b border-slate-100">
+                        <i class="fa-solid fa-puzzle-piece text-5xl text-amber-600 group-hover:scale-110 transition duration-300"></i>
+                        <span class="absolute top-3 right-3 bg-white/90 backdrop-blur text-xs font-semibold px-2.5 py-1 rounded-lg text-amber-700 border border-amber-100 shadow-sm">Арифметика</span>
+                    </div>
+                    <div class="p-6 flex flex-col flex-grow justify-between space-y-4">
+                        <div class="space-y-2">
+                            <h3 class="text-lg font-bold text-slate-900 group-hover:text-brand-600 transition">Китайська теорема про залишки</h3>
+                            <p class="text-slate-600 text-sm leading-relaxed">Давня математична загадка про армії та кошики яєць, розказана мовою інтерактивної анімації.</p>
+                        </div>
+                        <a href="ChineseRemainderCartoon.html" class="w-full bg-slate-100 hover:bg-brand-600 hover:text-white text-slate-800 font-semibold py-2.5 rounded-xl text-sm flex items-center justify-center space-x-2 transition">
+                            <i class="fa-solid fa-play text-xs"></i>
+                            <span>Дивитися симулятор</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Картка 3: Фарбування графів -->
+                <div class="group bg-white border border-slate-200 rounded-2xl overflow-hidden hover:shadow-xl hover:border-slate-300 transition-all duration-200 flex flex-col">
+                    <div class="h-44 bg-blue-50 relative p-6 flex items-center justify-center border-b border-slate-100">
+                        <i class="fa-solid fa-palette text-5xl text-blue-600 group-hover:scale-110 transition duration-300"></i>
+                        <span class="absolute top-3 right-3 bg-white/90 backdrop-blur text-xs font-semibold px-2.5 py-1 rounded-lg text-blue-700 border border-blue-100 shadow-sm">Графи</span>
+                    </div>
+                    <div class="p-6 flex flex-col flex-grow justify-between space-y-4">
+                        <div class="space-y-2">
+                            <h3 class="text-lg font-bold text-slate-900 group-hover:text-brand-600 transition">Фарбування графів</h3>
+                            <p class="text-slate-600 text-sm leading-relaxed">Як розфарбувати карти або розклад уроків за допомогою мінімальної кількості кольорів без конфліктів.</p>
+                        </div>
+                        <a href="GraphColoringCartoon1.html" class="w-full bg-slate-100 hover:bg-brand-600 hover:text-white text-slate-800 font-semibold py-2.5 rounded-xl text-sm flex items-center justify-center space-x-2 transition">
+                            <i class="fa-solid fa-play text-xs"></i>
+                            <span>Дивитися симулятор</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Картка 4: Проблема зупинки -->
+                <div class="group bg-white border border-slate-200 rounded-2xl overflow-hidden hover:shadow-xl hover:border-slate-300 transition-all duration-200 flex flex-col">
+                    <div class="h-44 bg-rose-50 relative p-6 flex items-center justify-center border-b border-slate-100">
+                        <i class="fa-solid fa-triangle-exclamation text-5xl text-rose-600 group-hover:scale-110 transition duration-300"></i>
+                        <span class="absolute top-3 right-3 bg-white/90 backdrop-blur text-xs font-semibold px-2.5 py-1 rounded-lg text-rose-700 border border-rose-100 shadow-sm">Логіка</span>
+                    </div>
+                    <div class="p-6 flex flex-col flex-grow justify-between space-y-4">
+                        <div class="space-y-2">
+                            <h3 class="text-lg font-bold text-slate-900 group-hover:text-brand-600 transition">Проблема зупинки</h3>
+                            <p class="text-slate-600 text-sm leading-relaxed">Чому комп'ютер не може наперед знати, чи зависне будь-яка програма у нескінченному циклі?</p>
+                        </div>
+                        <a href="HaltingProblemCartoon.html" class="w-full bg-slate-100 hover:bg-brand-600 hover:text-white text-slate-800 font-semibold py-2.5 rounded-xl text-sm flex items-center justify-center space-x-2 transition">
+                            <i class="fa-solid fa-play text-xs"></i>
+                            <span>Дивитися симулятор</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Картка 5: Стабільний шлюб -->
+                <div class="group bg-white border border-slate-200 rounded-2xl overflow-hidden hover:shadow-xl hover:border-slate-300 transition-all duration-200 flex flex-col">
+                    <div class="h-44 bg-purple-50 relative p-6 flex items-center justify-center border-b border-slate-100">
+                        <i class="fa-solid fa-ring text-5xl text-purple-600 group-hover:scale-110 transition duration-300"></i>
+                        <span class="absolute top-3 right-3 bg-white/90 backdrop-blur text-xs font-semibold px-2.5 py-1 rounded-lg text-purple-700 border border-purple-100 shadow-sm">Алгоритми</span>
+                    </div>
+                    <div class="p-6 flex flex-col flex-grow justify-between space-y-4">
+                        <div class="space-y-2">
+                            <h3 class="text-lg font-bold text-slate-900 group-hover:text-brand-600 transition">Стабільний шлюб</h3>
+                            <p class="text-slate-600 text-sm leading-relaxed">Легендарний алгоритм Гейла-Шеплі для ідеального та справедливого розподілу пар.</p>
+                        </div>
+                        <a href="StableMarriageCartoon.html" class="w-full bg-slate-100 hover:bg-brand-600 hover:text-white text-slate-800 font-semibold py-2.5 rounded-xl text-sm flex items-center justify-center space-x-2 transition">
+                            <i class="fa-solid fa-play text-xs"></i>
+                            <span>Дивитися симулятор</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Картка 6: Розфарбування вулиць -->
+                <div class="group bg-white border border-slate-200 rounded-2xl overflow-hidden hover:shadow-xl hover:border-slate-300 transition-all duration-200 flex flex-col">
+                    <div class="h-44 bg-emerald-50 relative p-6 flex items-center justify-center border-b border-slate-100">
+                        <i class="fa-solid fa-signs-post text-5xl text-emerald-600 group-hover:scale-110 transition duration-300"></i>
+                        <span class="absolute top-3 right-3 bg-white/90 backdrop-blur text-xs font-semibold px-2.5 py-1 rounded-lg text-emerald-700 border border-emerald-100 shadow-sm">Графи</span>
+                    </div>
+                    <div class="p-6 flex flex-col flex-grow justify-between space-y-4">
+                        <div class="space-y-2">
+                            <h3 class="text-lg font-bold text-slate-900 group-hover:text-brand-600 transition">Розфарбування вулиць</h3>
+                            <p class="text-slate-600 text-sm leading-relaxed">Інтерактивна головоломка про навігацію, орієнтацію та логіку міських вулиць.</p>
+                        </div>
+                        <a href="streetColorCartoon.html" class="w-full bg-slate-100 hover:bg-brand-600 hover:text-white text-slate-800 font-semibold py-2.5 rounded-xl text-sm flex items-center justify-center space-x-2 transition">
+                            <i class="fa-solid fa-play text-xs"></i>
+                            <span>Дивитися симулятор</span>
+                        </a>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+    </main>
+
+    <!-- Футер -->
+    <footer class="bg-white border-t border-slate-200 mt-20 py-8 text-center text-slate-500 text-sm">
+        <p>&copy; 2026 MathToons. Усі симулятори створені для натхнення та навчання.</p>
+    </footer>
+
+    <!-- Скрипт для пошуку -->
+    <script>
+        const searchInput = document.getElementById('searchInput');
+        searchInput.addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            const cards = document.querySelectorAll('#catalog .grid > div');
+            
+            cards.forEach(card => {
+                const title = card.querySelector('h3').textContent.toLowerCase();
+                const desc = card.querySelector('p').textContent.toLowerCase();
+                if (title.includes(term) || desc.includes(term)) {
+                    card.style.display = '';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
