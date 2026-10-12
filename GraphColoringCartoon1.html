@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Розфарбування графів — анімована презентація</title>
+<style>
+:root{--bg:#f6f1e7;--panel:#171310;--txt:#2c2416;--mut:#6b5d4f;--red:#e11d48}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Georgia,'Times New Roman',serif;background:var(--bg);color:var(--txt);
+  display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:18px}
+.container{width:100%;max-width:1240px;display:flex;flex-direction:column}
+.presentation{width:100%;aspect-ratio:16/9;background:#fff;border:2px solid #d4cfc7;
+  border-radius:10px 10px 0 0;position:relative;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+canvas{width:100%;height:100%;display:block;cursor:pointer}
+.scene-indicator{position:absolute;top:14px;right:14px;background:rgba(30,64,175,.92);color:#fff;
+  padding:5px 12px;border-radius:5px;font-size:13px;font-weight:bold;pointer-events:none}
+.subtitle{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
+  background:rgba(255,255,255,.95);padding:10px 20px;border-radius:8px;border:1px solid #d4cfc7;
+  font-size:17px;max-width:82%;text-align:center;line-height:1.45;box-shadow:0 2px 10px rgba(0,0,0,.12);
+  transition:opacity .3s;pointer-events:none}
+.subtitle b{color:#1e40af}
+/* ---------- ПЛЕЄР ---------- */
+.controls{background:linear-gradient(#241c15,#15100b);border-radius:0 0 10px 10px;padding:6px 14px 12px}
+.progress-zone{position:relative;height:40px;cursor:pointer}
+.progress-track{position:absolute;left:0;right:0;top:15px;height:5px;background:rgba(255,255,255,.16);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;width:0;background:linear-gradient(90deg,#e11d48,#f43f5e);border-radius:3px}
+.tick{position:absolute;top:11px;width:3px;height:13px;background:rgba(255,255,255,.45);border-radius:2px;transform:translateX(-1px)}
+.tick:hover{background:#fff}
+.tick.active{background:#fbbf24;box-shadow:0 0 6px #fbbf24}
+.tick-label{position:absolute;top:27px;transform:translateX(-50%);font-size:10px;color:rgba(255,255,255,.62);
+  white-space:nowrap;pointer-events:none;font-family:Arial,sans-serif}
+.btn-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.ctl{background:transparent;border:none;cursor:pointer;width:34px;height:34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;transition:background .2s}
+.ctl:hover{background:rgba(255,255,255,.12)}
+.ctl svg{width:19px;height:19px;fill:#fff}
+.time{color:#fff;font:13px Arial;margin-left:4px;min-width:96px}
+.seg{display:flex;border:1px solid rgba(255,255,255,.18);border-radius:7px;overflow:hidden}
+.seg button{background:transparent;border:none;color:#cfc7ba;padding:5px 10px;font:12px Arial;cursor:pointer}
+.seg button+button{border-left:1px solid rgba(255,255,255,.14)}
+.seg button.on{background:var(--red);color:#fff}
+select{background:#2a221b;color:#eee;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px 6px;font:12px Arial}
+.chk{display:flex;align-items:center;gap:5px;color:#d9d2c5;font:13px Arial;cursor:pointer;user-select:none}
+.chk input{accent-color:var(--red);width:15px;height:15px;cursor:pointer}
+.voice{margin-left:auto;color:#fff;font:15px Arial;background:rgba(255,255,255,.1);border-radius:5px;padding:3px 9px}
+.voice.active{animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.45}}
+.debug-section{margin-top:14px;background:#fff;border:2px solid #d4cfc7;border-radius:8px;padding:14px}
+.debug-section h3{font-size:14px;color:var(--mut);margin-bottom:10px}
+.scene-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px}
+.scene-list button{padding:7px;border:2px solid #d4cfc7;border-radius:6px;background:#fff;color:var(--txt);
+  font:12px Georgia;cursor:pointer;text-align:left}
+.scene-list button:hover{border-color:#1e40af}
+.scene-list button.active{background:#1e40af;color:#fff;border-color:#1e40af}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="presentation">
+    <canvas id="canvas"></canvas>
+    <div class="scene-indicator" id="sceneIndicator"></div>
+    <div class="subtitle" id="subtitle" style="opacity:0"></div>
+  </div>
+
+  <div class="controls">
+    <div class="progress-zone" id="progressZone">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div id="ticksLayer"></div>
+    </div>
+    <div class="btn-row">
+      <button class="ctl" id="btnPlay" title="Грати / Пауза (Space)"><span id="icoPlay"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span><span id="icoPause" style="display:none"><svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg></span></button>
+      <button class="ctl" id="btnStop" title="Спочатку (R)"><svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg></button>
+      <button class="ctl" id="btnPrev" title="Попередня сцена (←)"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+      <button class="ctl" id="btnNext" title="Наступна сцена (→)"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+      <span class="time" id="timeDisp">0:00 / 0:00</span>
+      <div class="seg" id="engineSeg" title="Рушій озвучення">
+        <button data-e="hf" title="Українська нейромережа (безкоштовне демо на Hugging Face)">UA нейро</button>
+        <button data-e="webspeech">Web Speech</button>
+        <button data-e="google" class="on">Google TTS</button>
+        <button data-e="none">Тихо</button>
+      </div>
+      <select id="hfVoice" title="Голос (для UA нейро)"><option value="Тетяна (жіночий) 👩" selected>Тетяна</option><option value="Лада (жіночий) 👩">Лада</option><option value="Дмитро (чоловічий) 👨">Дмитро</option><option value="Микита (чоловічий) 👨">Микита</option><option value="Олекса (чоловічий) 👨">Олекса</option></select>
+      <select id="speedSel" title="Швидкість">
+        <option value="0.75">0.75×</option><option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option><option value="1.5">1.5×</option>
+      </select>
+      <label class="chk"><input type="checkbox" id="chkSubs" checked><span>Субтитри</span></label>
+      <label class="chk"><input type="checkbox" id="chkLabels" checked><span>Назви сцен</span></label>
+      <label class="chk"><input type="checkbox" id="chkDebug"><span>Дебаг</span></label>
+      <span class="voice" id="voiceState">🔈</span>
+    </div>
+  </div>
+
+  <div class="debug-section" id="debugSection" style="display:none">
+    <h3>🔧 Перейти до сцени</h3>
+    <div class="scene-list" id="sceneList"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================= БАЗА ================= */
+const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d');
+const subtitleEl=document.getElementById('subtitle'),sceneIndicator=document.getElementById('sceneIndicator');
+const progressZone=document.getElementById('progressZone'),progressFill=document.getElementById('progressFill');
+const timeDisp=document.getElementById('timeDisp'),voiceState=document.getElementById('voiceState');
+const ticksLayer=document.getElementById('ticksLayer'),sceneListEl=document.getElementById('sceneList');
+const debugSection=document.getElementById('debugSection');
+const chkSubs=document.getElementById('chkSubs'),chkLabels=document.getElementById('chkLabels'),chkDebug=document.getElementById('chkDebug');
+const btnPlay=document.getElementById('btnPlay'),btnStop=document.getElementById('btnStop'),
+      btnPrev=document.getElementById('btnPrev'),btnNext=document.getElementById('btnNext'),
+      icoPlay=document.getElementById('icoPlay'),icoPause=document.getElementById('icoPause'),
+      speedSel=document.getElementById('speedSel'),engineSeg=document.getElementById('engineSeg');
+
+let W=0,H=0,K=1,DPR=1;
+function resize(){const r=canvas.getBoundingClientRect();DPR=window.devicePixelRatio||1;
+  W=r.width;H=r.height;canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);
+  K=Math.max(.6,Math.min(1.1,W/1150));}
+window.addEventListener('resize',resize);resize();
+
+const TAU=Math.PI*2;
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const lerp2=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t)];
+const eo=t=>1-Math.pow(1-t,3);
+const eio=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const eob=t=>{const c=1.70158;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2)};
+const stag=(t,s,d)=>clamp((t-s)/d,0,1);
+const rnd=i=>{const x=Math.sin(i*127.1+311.7)*43758.5453;return x-Math.floor(x)};
+const SUP='⁰¹²³⁴⁵⁶⁷⁸⁹',sup=n=>String(n).split('').map(d=>SUP[+d]).join('');
+function fnt(px,bold){ctx.font=(bold?'bold ':'')+Math.round(px*K)+'px Georgia,"Times New Roman",serif'}
+function fntE(px){ctx.font=Math.round(px*K)+'px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif'}
+function txt(t,x,y,al='center'){ctx.textAlign=al;ctx.fillText(t,x,y)}
+function rr(x,y,w,h,r){r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+function polyPath(poly,ox,oy,s){ctx.beginPath();poly.forEach((p,i)=>{const x=ox+p[0]*s,y=oy+p[1]*s;
+  i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.closePath()}
+function cent(poly){let x=0,y=0;poly.forEach(p=>{x+=p[0];y+=p[1]});return[x/poly.length,y/poly.length]}
+function centC(poly,ox,oy,s){const c=cent(poly);return[ox+c[0]*s,oy+c[1]*s]}
+function maxRC(poly,s){const c=cent(poly);let m=0;poly.forEach(p=>m=Math.max(m,Math.hypot(p[0]-c[0],p[1]-c[1])));return(m+28)*s}
+function card(x,y,w,h){ctx.fillStyle='rgba(255,255,255,.93)';rr(x,y,w,h,10*K);ctx.fill();
+  ctx.strokeStyle='#d4cfc7';ctx.lineWidth=1.5*K;ctx.stroke()}
+function chip(text,x,y,al,col){col=col||'#1e40af';if(al<=0)return;ctx.globalAlpha=al;fnt(16,true);
+  const tw=ctx.measureText(text).width;ctx.fillStyle='rgba(255,255,255,.95)';rr(x-tw/2-10*K,y-14*K,tw+20*K,26*K,7*K);ctx.fill();
+  ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.stroke();ctx.fillStyle=col;txt(text,x,y+5*K);ctx.globalAlpha=1}
+function edge(a,b,u,color,lw){if(u<=0)return;const ex=lerp(a[0],b[0],u),ey=lerp(a[1],b[1],u);
+  ctx.strokeStyle=color;ctx.lineWidth=lw;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(ex,ey);ctx.stroke();
+  if(u<1){ctx.fillStyle=color;ctx.beginPath();ctx.arc(ex,ey,lw*1.2,0,TAU);ctx.fill()}}
+function node(x,y,r,color,label,pop){const rr2=r*Math.max(.001,pop);
+  ctx.beginPath();ctx.arc(x,y,rr2,0,TAU);ctx.fillStyle=color;ctx.fill();
+  ctx.strokeStyle='#3b3226';ctx.lineWidth=2;ctx.stroke();
+  if(label&&pop>.6){fnt(r*1.05,true);ctx.fillStyle='#fff';txt(label,x,y+r*.38)}}
+function shock(x,y,st,t0,color,R){R=R||180;const u=stag(st,t0,0.9);if(u<=0||u>=1)return;
+  ctx.strokeStyle=color;ctx.globalAlpha=(1-u)*.8;ctx.lineWidth=(4*(1-u)+1)*K;
+  ctx.beginPath();ctx.arc(x,y,u*R*K,0,TAU);ctx.stroke();ctx.globalAlpha=1}
+function confetti(x,y,st,t0,n){for(let i=0;i<n;i++){const u=(st-t0)-i*.012;if(u<0||u>2.6)continue;
+  const a=rnd(i)*TAU,v=(110+rnd(i+50)*170)*K,dx=Math.cos(a)*v*u*.6,dy=Math.sin(a)*v*u*.6+140*K*u*u;
+  ctx.globalAlpha=clamp(1-u/2.6,0,1);ctx.fillStyle=PCOLORS[i%PCOLORS.length];
+  ctx.beginPath();ctx.arc(x+dx,y+dy,3.5*K,0,TAU);ctx.fill()}ctx.globalAlpha=1}
+function stamp(text,x,y,size,color,st,t0,rot){const p=eob(stag(st,t0,0.45));if(p<=0)return;
+  ctx.save();ctx.translate(x,y);ctx.rotate((rot||-0.1)*(1-p*.5));ctx.scale(p,p);
+  fnt(size,true);const w2=ctx.measureText(text).width+36*K;
+  ctx.fillStyle='rgba(255,255,255,.93)';rr(-w2/2,-size*.72*K,w2,size*1.44*K,10*K);ctx.fill();
+  ctx.strokeStyle=color;ctx.lineWidth=3*K;ctx.stroke();ctx.fillStyle=color;txt(text,0,size*.34*K);ctx.restore()}
+function typeText(text,st,t0){const n=Math.floor(Math.max(0,(st-t0))*30);if(n<=0)return null;
+  return text.slice(0,n)+(n<text.length&&Math.floor(st*3)%2?'▌':'')}
+function caption(text,st,t0,y){const shown=typeText(text,st,t0);if(!shown)return;
+  fnt(19);const tw=ctx.measureText(text).width;
+  ctx.fillStyle='rgba(255,255,255,.88)';rr(W/2-tw/2-14,y-24*K,tw+28,34*K,8);ctx.fill();
+  ctx.strokeStyle='#d4cfc7';ctx.lineWidth=1;ctx.stroke();ctx.fillStyle='#4a3f2e';txt(shown,W/2,y)}
+function sceneTitle(t,st){const p=eob(stag(st,0.1,0.6));if(p>0){
+  ctx.save();ctx.translate(W/2,44);ctx.scale(Math.max(.001,p),Math.max(.001,p));
+  fnt(30,true);ctx.fillStyle='#2c2416';txt(t,0,0);ctx.restore()}
+  const u=eo(stag(st,0.4,0.5));if(u>0){ctx.strokeStyle='#e11d48';ctx.lineWidth=3*K;ctx.beginPath();
+  ctx.moveTo(W/2-95*K*u,56);ctx.lineTo(W/2+95*K*u,56);ctx.stroke()}}
+function drawCan(x,y,color,label,pop){pop=pop===undefined?1:pop;if(pop<=0)return;
+  ctx.save();ctx.translate(x,y);ctx.scale(pop,pop);
+  ctx.fillStyle=color;rr(-17,-24,34,44,5);ctx.fill();ctx.strokeStyle='#3b3226';ctx.lineWidth=1.6;ctx.stroke();
+  ctx.fillStyle='#9a8f7f';rr(-20,-32,40,10,3);ctx.fill();ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,.88)';rr(-13,-8,26,16,3);ctx.fill();
+  ctx.fillStyle=color;ctx.beginPath();ctx.arc(0,0,5.5,0,TAU);ctx.fill();
+  if(label){fnt(13,true);ctx.fillStyle='#3b3226';txt(label,0,38)}ctx.restore()}
+function drawBrush(x,y,color,ang){ctx.save();ctx.translate(x,y);ctx.rotate(ang);
+  ctx.fillStyle=color||'#8a7a5f';ctx.beginPath();ctx.moveTo(-7,6);ctx.lineTo(7,6);ctx.lineTo(4,23);ctx.lineTo(-4,23);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='#3b3226';ctx.lineWidth=1.5;ctx.stroke();
+  ctx.fillStyle='#9ca3af';ctx.fillRect(-7,-2,14,9);ctx.strokeRect(-7,-2,14,9);
+  ctx.fillStyle='#b07a45';rr(-4,-34,8,32,4);ctx.fill();ctx.stroke();ctx.restore()}
+
+/* ================= ДАНІ: МАПА (центр + кільце з 5) ================= */
+const MV=[[0,-75],[71.3,-23.2],[44.1,60.7],[-44.1,60.7],[-71.3,-23.2]];
+const MW=[[22,-209],[179.6,-76.2],[104.2,188.1],[-100,173.2],[-190.1,-76.9]];
+const CENTER=MV;
+const RING=[[MV[0],MV[1],MW[1],MW[0]],[MV[1],MV[2],MW[2],MW[1]],[MV[2],MV[3],MW[3],MW[2]],
+            [MV[3],MV[4],MW[4],MW[3]],[MV[4],MV[0],MW[0],MW[4]]];
+const MAP_POLYS=[CENTER,...RING];
+const GRAPH_POS=[[0,0],[91.1,-125.4],[147.4,47.9],[0,155],[-147.4,47.9],[-91.1,-125.4]];
+const GRAPH_EDGES=[[0,1],[0,2],[0,3],[0,4],[0,5],[1,2],[2,3],[3,4],[4,5],[5,1]];
+const PCOLORS=['#dc2626','#1e40af','#16a34a','#eab308','#9333ea','#ec4899','#0d9488'];
+const RING3=['#dc2626','#1e40af','#16a34a','#dc2626','#1e40af'];   // кільце 3 фарбами
+const MAP_COLORS4=['#eab308','#dc2626','#1e40af','#dc2626','#1e40af','#16a34a'];
+function mapScale(){return Math.min(W*.42/235,(H*.5-100)/215)}
+function paintMap(ox,oy,sM,colors,paintArr,borderA){ // paintArr[i] 0..1 (розтікання)
+  MAP_POLYS.forEach((poly,i)=>{
+    polyPath(poly,ox,oy,sM);ctx.fillStyle='#f7f1e6';ctx.fill();
+    if(paintArr[i]>0){const c=centC(poly,ox,oy,sM),mr=maxRC(poly,sM);
+      ctx.save();polyPath(poly,ox,oy,sM);ctx.clip();
+      ctx.fillStyle=colors[i];ctx.beginPath();ctx.arc(c[0],c[1],Math.max(0,paintArr[i]*mr+1),0,TAU);ctx.fill();ctx.restore()}
+    polyPath(poly,ox,oy,sM);ctx.strokeStyle='#3b3226';ctx.globalAlpha=borderA===undefined?1:borderA;
+    ctx.lineWidth=2.5*K;ctx.stroke();ctx.globalAlpha=1})}
+
+/* ================= СЦЕНИ ================= */
+// --- 0. Титул ---
+function scTitle(w,h,st,gt){const cx=w/2,cy=h/2-20;
+  for(let i=0;i<16;i++){const spd=(80+rnd(i)*80)*K,x=rnd(i*3+1)*w,y=((gt*spd+rnd(i*7+2)*h*1.5)%(h+80))-50;
+    ctx.globalAlpha=.45;ctx.fillStyle=PCOLORS[i%4];
+    ctx.beginPath();ctx.arc(x,y,4*K,0,TAU);ctx.fill();
+    ctx.beginPath();ctx.moveTo(x-3.6*K,y-1);ctx.quadraticCurveTo(x,y-16*K,x+3.6*K,y-1);ctx.closePath();ctx.fill()}
+  ctx.globalAlpha=1;
+  [[-190,-30,'#dc2626'],[150,-60,'#1e40af'],[210,40,'#eab308'],[-160,50,'#16a34a']].forEach((b,i)=>{
+    const p=eob(stag(st,0.15+i*0.18,0.6));if(p<=0)return;
+    ctx.save();ctx.translate(cx+b[0]*K,cy+b[1]*K);ctx.rotate(Math.sin(gt*.8+i)*.1);ctx.scale(p,p);
+    ctx.globalAlpha=.15;ctx.fillStyle=b[2];ctx.beginPath();
+    ctx.ellipse(0,0,(95+rnd(i)*40)*K,(55+rnd(i+5)*30)*K,0,0,TAU);ctx.fill();ctx.restore();ctx.globalAlpha=1});
+  const tp=eob(stag(st,0.5,0.7));
+  ctx.save();ctx.translate(cx,cy-10);ctx.scale(Math.max(.001,tp),Math.max(.001,tp));
+  fnt(52,true);ctx.fillStyle='#2c2416';txt('Розфарбування графів',0,0);ctx.restore();
+  const uu=eo(stag(st,1.4,1.2));
+  if(uu>0){ctx.strokeStyle='#e11d48';ctx.lineWidth=4*K;ctx.lineCap='round';ctx.beginPath();
+    const y0=cy+30,n=44;for(let i=0;i<=n*uu;i++){const x=cx-220*K+440*K*i/n,y=y0+Math.sin(i/n*TAU)*7*K;
+      i?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.stroke()}
+  const sp=eo(stag(st,2.6,0.8));if(sp>0){ctx.globalAlpha=sp;fnt(22);ctx.fillStyle='#6b5d4f';
+    txt('від мапи до математики · χ(G)',cx,cy+74+(1-sp)*10);ctx.globalAlpha=1}
+  for(let i=0;i<4;i++){const p=eob(stag(st,3.6+i*0.22,0.5));if(p>0)
+    drawCan(cx-190*K+i*126*K,cy+150*K+Math.sin(gt*2+i)*4*K,PCOLORS[i],'',p)}
+  ctx.save();ctx.translate(92*K,h-72*K);ctx.rotate(gt*.4);ctx.globalAlpha=.55;
+  const g=GRAPH_POS.map(p=>[p[0]*.3*K,p[1]*.3*K]);
+  GRAPH_EDGES.forEach(([a,b])=>{ctx.strokeStyle='#1e40af';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(g[a][0],g[a][1]);ctx.lineTo(g[b][0],g[b][1]);ctx.stroke()});
+  g.forEach((p,i)=>{ctx.beginPath();ctx.arc(p[0],p[1],5,0,TAU);ctx.fillStyle=MAP_COLORS4[i];ctx.fill()});
+  ctx.restore();ctx.globalAlpha=1}
+
+// --- 1. Мапа: пензель фарбує по черзі ---
+function scMapPaint(w,h,st,gt){const sM=mapScale(),ox=w/2,oy=h/2+8;
+  sceneTitle('Розфарбовуємо мапу',st);
+  const order=[1,2,3,4,5],cols=RING3,start=k=>1.8+k*2.6,DUR=2.0;
+  const paint=[0,0,0,0,0,0];order.forEach((ci,k)=>paint[ci]=stag(st,start(k),DUR));
+  paintMap(ox,oy,sM,['#f7f1e6',...RING3].map((c,i)=>i===0?'#f7f1e6':c),paint);
+  MAP_POLYS.forEach((poly,i)=>{polyPath(poly,ox,oy,sM);ctx.strokeStyle='#3b3226';ctx.lineWidth=2.5*K;ctx.stroke()});
+  // підказка "?" на центрі
+  const q=stag(st,15.2,0.6);
+  if(q>0){polyPath(CENTER,ox,oy,sM);ctx.fillStyle='rgba(120,113,108,'+(0.35+0.25*Math.sin(gt*4))*q+')';ctx.fill();
+    const p=eob(stag(st,15.5,0.5));if(p>0){const c=centC(CENTER,ox,oy,sM);
+      ctx.save();ctx.translate(c[0],c[1]);ctx.scale(p,p);fnt(46,true);ctx.fillStyle='#44403c';txt('?',0,16*K);ctx.restore()}}
+  // палітра
+  const pal=Tpt(-330,238,ox,oy,sM),park=Tpt(-330,150,ox,oy,sM);
+  const names=['червона','синя','зелена'];
+  for(let i=0;i<3;i++){const p=eob(stag(st,0.25+i*0.15,0.5));
+    drawCan(pal[0]+i*72*K,pal[1]+Math.sin(gt*2+i)*3*K,PCOLORS[i],names[i],p)}
+  // бризки
+  order.forEach((ci,k)=>{const p=paint[ci];if(p<=0)return;const c=centC(MAP_POLYS[ci],ox,oy,sM);
+    for(let j=0;j<7;j++){const tj=.15+j*.11;if(p>tj){ctx.globalAlpha=clamp((p-tj)*3,0,1)*.8;
+      ctx.fillStyle=cols[k];ctx.beginPath();
+      ctx.arc(c[0]+(rnd(ci*9+j)-.5)*70*K*sM,c[1]+(rnd(ci*7+j+3)-.5)*70*K*sM,(1.5+rnd(j+ci)*2.5)*K,0,TAU);ctx.fill()}}
+    ctx.globalAlpha=1});
+  // траєкторія пензля
+  const cc=order.map(ci=>centC(MAP_POLYS[ci],ox,oy,sM));
+  let bp=park,bcol=null,painting=-1;
+  if(st<0.9)bp=park;
+  else if(st<1.8)bp=lerp2(park,cc[0],eio(stag(st,0.9,0.9)));
+  else for(let k=0;k<5;k++){const s0=start(k),s1=s0+DUR;
+    if(st>=s0&&st<s1){bp=cc[k];bcol=cols[k];painting=k;break}
+    if(k<4&&st>=s1&&st<start(k+1)){bp=lerp2(cc[k],cc[k+1],eio((st-s1)/(start(k+1)-s1)));break}
+    if(k===4){if(st<s1+1)bp=lerp2(cc[4],park,eio(st-s1));else bp=park;break}}
+  if(painting>=0){fnt(15,true);const nm=names[PCOLORS.indexOf(bcol)];
+    const tw=ctx.measureText('фарба: '+nm).width;
+    ctx.fillStyle='rgba(255,255,255,.9)';rr(bp[0]+16*K,bp[1]-58*K,tw+16,24*K,6);ctx.fill();
+    ctx.fillStyle='#3b3226';txt('фарба: '+nm,bp[0]+16*K+8+tw/2,bp[1]-41*K)}
+  const ang=painting>=0?Math.sin(gt*14)*.22:(st<1.8?Math.sin(gt*3)*.08:.15);
+  drawBrush(bp[0],bp[1]-8*K,bcol,ang);
+  const done=order.filter(ci=>paint[ci]>=1).length;
+  fnt(15,true);ctx.fillStyle='#6b5d4f';txt('фарбуємо: '+done+'/5',W-90,h-24)}
+function Tpt(x,y,ox,oy,s){return[ox+x*s,oy+y*s]}
+
+// --- 2. Конфлікт трьох фарб ---
+function scConflict(w,h,st,gt){const sM=mapScale(),ox=w/2,oy=h/2;
+  sceneTitle('Три фарби — не вистачає!',st);
+  const paint=[0,1,2,3,4,5].map(i=>i===0?0:stag(st,0.15+i*0.22,0.45));
+  paintMap(ox,oy,sM,['#a8a29e',...RING3],paint);
+  polyPath(CENTER,ox,oy,sM);ctx.fillStyle='rgba(220,38,38,'+(0.12+0.1*Math.sin(gt*5))+')';ctx.fill();
+  const c0=centC(CENTER,ox,oy,sM);
+  const qp=eob(stag(st,2.6,0.5));
+  if(qp>0){ctx.save();ctx.translate(c0[0],c0[1]);ctx.scale(qp,qp);fnt(54,true);ctx.fillStyle='#44403c';txt('?',0,18*K);ctx.restore()}
+  shock(c0[0],c0[1],st,4.6,'#dc2626');
+  const xp=eob(stag(st,4.7,0.5));
+  if(xp>0){ctx.save();ctx.translate(c0[0],c0[1]);ctx.scale(xp,xp);ctx.rotate(-.15);
+    ctx.beginPath();ctx.arc(0,0,44*K,0,TAU);ctx.fillStyle='rgba(255,255,255,.93)';ctx.fill();
+    ctx.strokeStyle='#dc2626';ctx.lineWidth=5*K;ctx.stroke();
+    fnt(44,true);ctx.fillStyle='#dc2626';txt('✕',0,15*K);ctx.restore()}
+  const names=['червона','синя','зелена'];
+  for(let i=0;i<3;i++){const t0=6.3+i*0.7,p=eob(stag(st,t0,0.4));if(p<=0)continue;
+    const shake=st-t0<0.5?Math.sin((st-t0)*40)*(1-(st-t0)*2)*5*K:0;
+    drawCan(ox+335*K+shake,oy-95*K+i*82*K,PCOLORS[i],names[i],p);
+    fnt(14,true);ctx.fillStyle='#dc2626';txt('вжито сусідами',ox+335*K+shake,oy-95*K+i*82*K+52*K)}
+  caption('Усі три фарби зайняли сусіди — центру нічого не лишилось!',st,9,h-58)}
+
+// --- 3. Четверта фарба ---
+function scFourth(w,h,st,gt){const sM=mapScale(),ox=w/2,oy=h/2;
+  sceneTitle('Четверта фарба!',st);
+  const paint=[0,1,2,3,4,5].map(i=>i===0?0:stag(st,0.15+i*0.2,0.4));
+  paint[0]=stag(st,2.4,1.4);
+  paintMap(ox,oy,sM,['#eab308',...RING3],paint);
+  const c0=centC(CENTER,ox,oy,sM);
+  // банка жовта прилітає
+  const cu=eio(stag(st,0.6,1.2));
+  if(cu>0){const fx=W-70,fy=60,tx=ox+335*K,ty=oy+130*K;
+    drawCan(lerp(fx,tx,cu),lerp(fy,ty,cu)-Math.sin(Math.PI*cu)*70*K,'#eab308','жовта',1)}
+  // пензель
+  const park=Tpt(-330,150,ox,oy,sM);let bp,bc='#eab308';
+  if(st<1.5)bp=park;
+  else if(st<2.4)bp=lerp2(park,c0,eio(stag(st,1.5,0.9)));
+  else if(st<3.8)bp=c0;
+  else bp=lerp2(c0,[ox+335*K,oy+90*K],eio(stag(st,3.8,0.8)));
+  drawBrush(bp[0],bp[1]-8*K,bc,paint[0]>0&&paint[0]<1?Math.sin(gt*14)*.22:.15);
+  shock(c0[0],c0[1],st,4.8,'#16a34a');
+  confetti(c0[0],c0[1],st,4.8,36);
+  const gp=eob(stag(st,4.9,0.5));
+  if(gp>0){ctx.save();ctx.translate(c0[0],c0[1]);ctx.scale(gp,gp);
+    ctx.beginPath();ctx.arc(0,0,44*K,0,TAU);ctx.fillStyle='rgba(255,255,255,.93)';ctx.fill();
+    ctx.strokeStyle='#16a34a';ctx.lineWidth=5*K;ctx.stroke();
+    fnt(42,true);ctx.fillStyle='#16a34a';txt('✓',0,14*K);ctx.restore()}
+  stamp('χ = 4',ox+335*K,oy-140*K,28,'#1e40af',st,7.2,-0.08);
+  caption('Чотирьох фарб достатньо для будь-якої мапи на площині!',st,5.8,h-58)}
+
+// --- 4. Мапа стягується у граф ---
+function scMorph(w,h,st,gt){const sM=Math.min(mapScale()*1.06,(H*.5-90)/215),ox=w/2,oy=h/2-5;
+  sceneTitle('Стискаємо мапу у граф',st);
+  const bob=stag(st,13,1);
+  const npos=GRAPH_POS.map((p,i)=>Tpt(p[0],p[1],ox,oy,sM).map((v,q)=>v+(q?Math.sin(gt*2+i*.9)*4*K*bob:0)));
+  MAP_POLYS.forEach((poly,i)=>{const e=eio(stag(st,i*0.5,3.2)),n=npos[i];
+    ctx.beginPath();poly.forEach((p,j)=>{const x=ox+p[0]*sM,y=oy+p[1]*sM;
+      const px=lerp(x,n[0],e),py=lerp(y,n[1],e);j?ctx.lineTo(px,py):ctx.moveTo(px,py)});ctx.closePath();
+    ctx.globalAlpha=Math.max(0,1-.65*e);ctx.fillStyle=MAP_COLORS4[i];ctx.fill();
+    ctx.globalAlpha=Math.max(0,1-e*.9);ctx.strokeStyle='#3b3226';ctx.lineWidth=2.5*K;ctx.stroke();ctx.globalAlpha=1;
+    const colEnd=i*0.5+3.2;shock(n[0],n[1],st,colEnd,MAP_COLORS4[i],60)});
+  GRAPH_EDGES.forEach(([a,b],k)=>edge(npos[a],npos[b],eo(stag(st,3.4+k*0.42,0.7)),'#1e40af',3.5*K));
+  const popT=[4.1,4.1,4.5,4.9,5.3,5.7];
+  npos.forEach((n,i)=>node(n[0],n[1],13*K,MAP_COLORS4[i],null,eob(stag(st,popT[i],0.5))));
+  // підписи
+  if(st>9.4){const al=stag(st,9.4,0.4)*Math.max(0,1-stag(st,12.4,0.5));
+    if(al>0){const n=npos[3];ctx.globalAlpha=al;ctx.strokeStyle='#dc2626';ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(n[0],n[1]+64*K);ctx.lineTo(n[0],n[1]+24*K);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(n[0]-5*K,n[1]+32*K);ctx.lineTo(n[0],n[1]+24*K);ctx.lineTo(n[0]+5*K,n[1]+32*K);ctx.stroke();
+      ctx.globalAlpha=1;chip('країна → вершина',n[0],n[1]+82*K,al,'#dc2626')}}
+  if(st>11.4){const al=stag(st,11.4,0.4)*Math.max(0,1-stag(st,14.2,0.5));
+    if(al>0){const m=[(npos[2][0]+npos[3][0])/2,(npos[2][1]+npos[3][1])/2];
+      ctx.globalAlpha=al;ctx.strokeStyle='#dc2626';ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(m[0],m[1]+64*K);ctx.lineTo(m[0],m[1]+24*K);ctx.stroke();ctx.globalAlpha=1;
+      chip('кордон → ребро',m[0],m[1]+82*K,al,'#dc2626')}}
+  caption('Вершини та ребра — усе, що має значення',st,13.6,h-46)}
+
+// --- 5. Формалізація ---
+function scFormal(w,h,st,gt){const ox=w/2,oy=h/2;
+  sceneTitle('Хроматичне число',st);
+  const gx=ox-250*K,gy=oy-5*K,R=.78*K;
+  const npos=GRAPH_POS.map((p,i)=>[gx+p[0]*R,gy+p[1]*R+Math.sin(gt*2+i)*2.5*K]);
+  GRAPH_EDGES.forEach(([a,b],k)=>{ctx.globalAlpha=.65+.3*Math.sin(gt*2.4+k);
+    edge(npos[a],npos[b],1,'#1e40af',3*K)});ctx.globalAlpha=1;
+  npos.forEach((n,i)=>node(n[0],n[1],(13+Math.sin(gt*3+i)*1.2)*K,MAP_COLORS4[i],null,1));
+  const bullets=[{t:1,ic:'🎨',c:0,tx:'Кожній вершині — свій колір'},
+                 {t:4,ic:'🔗',c:1,tx:'Кінці кожного ребра — різних кольорів'},
+                 {t:7,ic:'χ',c:3,tx:'χ(G) — мінімальна кількість кольорів'}];
+  bullets.forEach((b,i)=>{const u=eio(stag(st,b.t,0.6));if(u<=0)return;
+    const x0=ox+70*K+ (1-u)*260*K, y=oy-105*K+i*84*K;
+    card(x0,y-30*K,430*K,62*K);
+    ctx.beginPath();ctx.arc(x0+34*K,y+1,20*K,0,TAU);ctx.fillStyle=PCOLORS[b.c];ctx.fill();
+    if(b.ic==='χ'){fnt(22,true);ctx.fillStyle='#fff';txt('χ',x0+34*K,y+8*K)}
+    else{fntE(19);txt(b.ic,x0+34*K,y+7*K)}
+    fnt(19);ctx.fillStyle='#2c2416';ctx.textAlign='left';ctx.fillText(b.tx,x0+68*K,y+8*K);ctx.textAlign='center'});
+  // формула
+  const fp=eob(stag(st,10,0.55));
+  if(fp>0){ctx.save();ctx.translate(ox,oy+160*K);ctx.rotate(-.06*(1-fp*.5));ctx.scale(fp,fp);
+    if(st>11.5){ctx.shadowColor='#1e40af';ctx.shadowBlur=(10+8*Math.sin(gt*4))*K}
+    fnt(40,true);const tw=ctx.measureText('χ(G) = 4').width+44*K;
+    ctx.fillStyle='rgba(255,255,255,.95)';rr(-tw/2,-30*K,tw,60*K,10*K);ctx.fill();
+    ctx.strokeStyle='#1e40af';ctx.lineWidth=4*K;ctx.stroke();
+    ctx.shadowBlur=0;ctx.fillStyle='#1e40af';txt('χ(G) = 4',0,14*K);ctx.restore()}}
+
+// --- 6. Приклади ---
+function drawMini(pts,edges,cols,tl,e0,eS,n0,bt,chiT,chiC,ox,oy,s){
+  edges.forEach((e,k)=>edge([ox+pts[e[0]][0]*s,oy+pts[e[0]][1]*s],[ox+pts[e[1]][0]*s,oy+pts[e[1]][1]*s],
+    eo(stag(tl,e0+k*eS,0.4)),'#64748b',2.2*K));
+  pts.forEach((p,i)=>node(ox+p[0]*s,oy+p[1]*s,11*K,cols[i],null,eob(stag(tl,n0+i*0.1,0.4))));
+  const bp=eob(stag(tl,bt,0.45));
+  if(bp>0){ctx.save();ctx.translate(ox,oy+95*K*s);ctx.scale(bp,bp);
+    ctx.beginPath();ctx.arc(0,0,25*K,0,TAU);ctx.fillStyle='#fff';ctx.fill();
+    ctx.strokeStyle=chiC;ctx.lineWidth=3*K;ctx.stroke();
+    fnt(16,true);ctx.fillStyle=chiC;txt(chiT,0,5*K);ctx.restore()}}
+function scExamples(w,h,st,gt){const ox=w/2,oy=h/2;
+  sceneTitle('Приклади хроматичних чисел',st);
+  const P=[{dx:-335,t0:0.8,name:'Дерево'},{dx:0,t0:4.6,name:'Трикутник'},{dx:335,t0:9,name:'Повний K₅'}];
+  P.forEach((p,idx)=>{const u=eio(stag(st,p.t0,0.6));if(u<=0)return;
+    const px=ox+p.dx*K,py=oy+6*K+(1-u)*44*K;ctx.globalAlpha=u;
+    card(px-150*K,py-160*K,300*K,322*K);
+    fnt(20,true);ctx.fillStyle='#2c2416';txt(p.name,px,py-128*K);ctx.globalAlpha=1;
+    const tl=st-p.t0;
+    if(idx===0){const pts=[[0,-70],[-55,0],[55,0],[-85,70],[-28,70],[28,70],[85,70]];
+      drawMini(pts,[[0,1],[0,2],[1,3],[1,4],[2,5],[2,6]],
+        ['#dc2626','#1e40af','#1e40af','#dc2626','#dc2626','#dc2626','#dc2626'],
+        tl,0.4,0.22,1.2,2.6,'χ = 2','#1e40af',px,py-6*K,K)}
+    if(idx===1){drawMini([[0,-55],[-48,30],[48,30]],[[0,1],[1,2],[2,0]],
+        ['#dc2626','#1e40af','#16a34a'],tl,0.4,0.25,0.9,1.8,'χ = 3','#dc2626',px,py-6*K,K)}
+    if(idx===2){const pts=[],edges=[],cols=PCOLORS.slice(0,5);
+      for(let i=0;i<5;i++){const a=-Math.PI/2+i*TAU/5;pts.push([Math.cos(a)*62,Math.sin(a)*62])}
+      for(let i=0;i<5;i++)for(let j=i+1;j<5;j++)edges.push([i,j]);
+      drawMini(pts,edges,cols,tl,0.4,0.3,3.4,3.9,'χ = 5','#9333ea',px,py-6*K,K)}});
+  caption('Щільніший граф → більше кольорів',st,13.8,h-40)}
+
+// --- 7. Жадібний алгоритм ---
+function scGreedy(w,h,st,gt){const ox=w/2,oy=h/2-15;
+  sceneTitle('Жадібний алгоритм',st);
+  const pts=[[-130,-70],[130,-70],[-130,70],[130,70]].map(p=>[ox+p[0]*K,oy+p[1]*K]);
+  const labels=['A','B','C','D'];
+  const edges=[[0,1],[0,2],[0,3],[1,2],[1,3]];
+  edges.forEach((e,k)=>edge(pts[e[0]],pts[e[1]],eo(stag(st,0.5+k*0.35,0.5)),'#64748b',2.5*K));
+  const filled=[0,0,0,0];
+  const SEQ=[{v:0,t:2.8,acc:'#dc2626',rej:[]},{v:2,t:5.0,acc:'#1e40af',rej:['#dc2626']},
+             {v:3,t:7.2,acc:'#16a34a',rej:['#dc2626','#1e40af']},
+             {v:1,t:10.8,acc:'#9333ea',rej:['#dc2626','#1e40af','#16a34a']}];
+  SEQ.forEach((s,si)=>{const ft=s.t+s.rej.length*0.35+0.15;
+    filled[s.v]=stag(st,ft,0.8);
+    // бейдж порядку
+    const op=eob(stag(st,s.t,0.4));
+    if(op>0){ctx.save();ctx.translate(pts[s.v][0]-30*K,pts[s.v][1]-34*K);ctx.scale(op,op);
+      ctx.beginPath();ctx.arc(0,0,13*K,0,TAU);ctx.fillStyle='#2c2416';ctx.fill();
+      fnt(13,true);ctx.fillStyle='#fff';txt(String(si+1),0,4.5*K);ctx.restore()}
+    // стрічка перевірки кольорів
+    if(st>s.t){let sx=pts[s.v][0]-(s.rej.length)*13*K;
+      s.rej.forEach((rc,ri)=>{const ap=eob(stag(st,s.t+0.15+ri*0.35,0.3));
+        if(ap>0){ctx.save();ctx.translate(sx,pts[s.v][1]-95*K);ctx.scale(ap,ap);
+          ctx.beginPath();ctx.arc(0,0,10*K,0,TAU);ctx.fillStyle=rc;ctx.fill();
+          ctx.strokeStyle='#3b3226';ctx.lineWidth=1.5;ctx.stroke();
+          const cr=stag(st,s.t+0.15+ri*0.35+0.3,0.25);
+          if(cr>0){ctx.strokeStyle='#dc2626';ctx.lineWidth=3*K;
+            ctx.beginPath();ctx.moveTo(-7*K,-7*K);ctx.lineTo(7*K,7*K);ctx.moveTo(7*K,-7*K);ctx.lineTo(-7*K,7*K);ctx.stroke()}
+          ctx.restore()}sx+=26*K});
+      const ap=eob(stag(st,s.t+0.15+s.rej.length*0.35,0.3));
+      if(ap>0){ctx.save();ctx.translate(sx,pts[s.v][1]-95*K);ctx.scale(ap,ap);
+        ctx.beginPath();ctx.arc(0,0,11*K,0,TAU);ctx.fillStyle=s.acc;ctx.fill();
+        ctx.strokeStyle='#3b3226';ctx.lineWidth=1.5;ctx.stroke();
+        fnt(12,true);ctx.fillStyle='#fff';txt('✓',0,4*K);
+        if(si===3){fnt(16,true);ctx.fillStyle='#9333ea';txt('!',13*K,-8*K)}
+        ctx.restore()}}});
+  pts.forEach((p,i)=>node(p[0],p[1],17*K,filled[i]>0?SEQ.find(s=>s.v===i).acc:'#f1ece2',labels[i],1));
+  // c–d не сусіди
+  if(st>14.2){ctx.globalAlpha=.6;ctx.setLineDash([6,6]);ctx.strokeStyle='#6b5d4f';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(pts[2][0],pts[2][1]);ctx.lineTo(pts[3][0],pts[3][1]);ctx.stroke();
+    ctx.setLineDash([]);ctx.globalAlpha=1;chip('не сусіди',(pts[2][0]+pts[3][0])/2,(pts[2][1]+pts[3][1])/2+34*K,.8,'#6b5d4f')}
+  fnt(19,true);
+  if(st>14.6){ctx.fillStyle='#dc2626';txt('Жадібний: 4 фарби',ox,h-74)}
+  if(st>15.3){ctx.fillStyle='#16a34a';txt('оптимально: 3 (C і D — однаковий колір)',ox,h-44)}}
+
+// --- 8. Теорема про 4 фарби: сторінки прилітають ---
+function scTheorem(w,h,st,gt){const ox=w/2,oy=h/2-8;
+  sceneTitle('Теорема про чотири фарби · 1976',st);
+  const mx=ox-280*K,my=oy-20*K;
+  ctx.fillStyle='#e7e0d4';rr(mx-160*K,my-120*K,320*K,240*K,12*K);ctx.fill();
+  ctx.strokeStyle='#3b3226';ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle='#0f3d2e';rr(mx-140*K,my-100*K,280*K,200*K,8*K);ctx.fill();
+  ctx.fillStyle='rgba(190,255,220,'+(0.05+0.03*Math.sin(gt*27))+')';
+  rr(mx-140*K,my-100*K,280*K,200*K,8*K);ctx.fill();
+  const sy=my-100*K+((gt*70)%(200*K));
+  ctx.fillStyle='rgba(120,255,180,.09)';ctx.fillRect(mx-140*K,sy,280*K,10*K);
+  ctx.save();ctx.translate(mx,my-46*K);
+  MAP_POLYS.forEach((poly,i)=>{polyPath(poly,0,0,0.3*K);ctx.fillStyle=MAP_COLORS4[i];ctx.fill();
+    ctx.strokeStyle='#d1fae5';ctx.lineWidth=1;ctx.stroke()});ctx.restore();
+  fnt(15);ctx.fillStyle='#7ef0b0';ctx.textAlign='left';
+  const cfg=Math.floor(st*2.4);
+  ctx.fillText('> map #'+(100+cfg),mx-125*K,my+38*K);
+  ctx.fillText('> configs: '+(cfg*97),mx-125*K,my+60*K);
+  if(Math.floor(gt*2)%2)ctx.fillText('█',mx-125*K,my+82*K);
+  ctx.textAlign='center';
+  ctx.fillStyle='#c9bfae';ctx.fillRect(mx-30*K,my+120*K,60*K,26*K);ctx.fillRect(mx-70*K,my+146*K,140*K,10*K);
+  // стопка + сторінки, що прилітають
+  const stackX=ox+235*K,baseY=oy+150*K,NP=46;let landed=0;
+  for(let i=0;i<NP;i++){const t0=1.2+i*0.28,u=(st-t0)/0.9;
+    if(u>=1){landed++;const yy=baseY-i*3*K,jx=(rnd(i)-.5)*4*K,rot=(rnd(i+9)-.5)*.06;
+      ctx.save();ctx.translate(stackX+jx,yy);ctx.rotate(rot);
+      ctx.fillStyle='#fff';ctx.fillRect(-30*K,-42*K,60*K,84*K);
+      ctx.strokeStyle='#b9b0a2';ctx.lineWidth=1;ctx.strokeRect(-30*K,-42*K,60*K,84*K);
+      ctx.strokeStyle='#ddd6c9';for(let L=1;L<6;L++){ctx.beginPath();
+        ctx.moveTo(-22*K,-30*K+L*12*K);ctx.lineTo(22*K,-30*K+L*12*K);ctx.stroke()}ctx.restore()}
+    else if(u>0){const sx2=mx+90*K,sy2=my-90*K,ty=baseY-landed*3*K;
+      ctx.save();ctx.translate(lerp(sx2,stackX,u),lerp(sy2,ty,u)-Math.sin(Math.PI*u)*150*K);
+      ctx.rotate(u*7+rnd(i)*6);ctx.fillStyle='#fff';ctx.fillRect(-30*K,-42*K,60*K,84*K);
+      ctx.strokeStyle='#b9b0a2';ctx.strokeRect(-30*K,-42*K,60*K,84*K);ctx.restore()}}
+  const pages=Math.min(landed*10,460);
+  fnt(24,true);ctx.fillStyle='#1e40af';txt('сторінок: '+pages,stackX,baseY+44*K);
+  stamp('≈ 450 сторінок',stackX,baseY-170*K,26,'#dc2626',st,15.2,-0.08);
+  chip('Appel & Haken · ILLINOIS',mx,my+180*K,stag(st,17,0.5),'#1e40af');
+  caption("1936 конфігурацій перевірено комп'ютером — вперше!",st,16,h-40)}
+
+// --- 9. NP-повнота ---
+function scNP(w,h,st,gt){const ox=w/2,oy=h/2-10;
+  sceneTitle('NP-повна задача',st);
+  const root=[ox,oy+172*K],maxD=clamp(Math.floor((st-0.8)/0.85),0,7);
+  const LC=['#dc2626','#ea580c','#eab308','#65a30d','#16a34a','#0d9488','#2563eb','#7c3aed'];
+  function br(x,y,ang,len,d){if(d>maxD)return;const x2=x+Math.cos(ang)*len,y2=y+Math.sin(ang)*len;
+    ctx.strokeStyle=LC[d];ctx.globalAlpha=.9-d*.08;ctx.lineWidth=Math.max(1,(6-d)*1.1*K);
+    ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x2,y2);ctx.stroke();
+    const sp2=.5+d*.03;
+    br(x2,y2,ang-sp2+Math.sin(gt+d)*.02,len*.74,d+1);
+    br(x2,y2,ang+sp2+Math.cos(gt+d)*.02,len*.74,d+1);
+    if(d===maxD){ctx.globalAlpha=.9;ctx.fillStyle=LC[d];
+      ctx.beginPath();ctx.arc(x2,y2,3*K,0,TAU);ctx.fill()}}
+  ctx.globalAlpha=1;
+  br(root[0],root[1],-Math.PI/2+Math.sin(gt*1.3)*.05,95*K,0);ctx.globalAlpha=1;
+  node(root[0],root[1],16*K,'#1e40af',null,1);
+  fnt(14);ctx.fillStyle='#6b5d4f';txt('граф із n вершин',root[0],root[1]+34*K);
+  // секундомір
+  const cx2=Math.max(66,ox-415*K),cy2=oy-140*K;
+  ctx.beginPath();ctx.arc(cx2,cy2,26*K,0,TAU);ctx.fillStyle='#fff';ctx.fill();
+  ctx.strokeStyle='#dc2626';ctx.lineWidth=3*K;ctx.stroke();
+  ctx.strokeStyle='#dc2626';ctx.lineWidth=2.5*K;ctx.beginPath();
+  ctx.moveTo(cx2,cy2);ctx.lineTo(cx2+Math.cos(gt*5-1.2)*18*K,cy2+Math.sin(gt*5-1.2)*18*K);ctx.stroke();
+  if(st>8){ctx.globalAlpha=.35+.25*Math.sin(gt*6);ctx.beginPath();ctx.arc(cx2,cy2,32*K,0,TAU);
+    ctx.strokeStyle='#dc2626';ctx.lineWidth=2;ctx.stroke();ctx.globalAlpha=1}
+  // лічильник
+  const n=Math.min(6+Math.floor(st*1.7),40),logv=0.60206*n,ex2=Math.floor(logv),mant=Math.pow(10,logv-ex2);
+  card(ox+130*K,oy-192*K,310*K,120*K);
+  fnt(17,true);ctx.fillStyle='#dc2626';txt('варіантів розфарбувань: 4ⁿ,  n = '+n,ox+285*K,oy-160*K);
+  fnt(26,true);ctx.fillStyle='#2c2416';
+  txt(n<=12?('4^'+n+' = '+Math.pow(4,n).toLocaleString('uk-UA')):('≈ '+mant.toFixed(1)+'·10'+sup(ex2)),ox+285*K,oy-108*K);
+  stamp('NP-повна',ox+150*K,oy-30*K,28,'#dc2626',st,12.5,-0.1);
+  caption('Для 100 вершин: ≈10⁶⁰ варіантів — більше, ніж атомів у Всесвіті!',st,9.5,h-42)}
+
+// --- 10. Розклад: адміністратор тусує картки ---
+const CARDS=[{c:0,r:0,col:'#dc2626'},{c:0,r:1,col:'#dc2626'},{c:0,r:3,col:'#1e40af'},
+  {c:1,r:0,col:'#16a34a'},{c:1,r:1,col:'#9333ea'},{c:1,r:3,col:'#1e40af'},
+  {c:2,r:0,col:'#1e40af'},{c:2,r:2,col:'#1e40af'},{c:3,r:1,col:'#16a34a'},{c:3,r:3,col:'#eab308'}];
+const TCH=['Іваненко','Петренко','Коваленко','Шевченко','Бондар','Ткаченко','Мельник','Кравчук','Оліфер','Гончар'];
+const SWAPS=[{t:4.6,a:1,b:8},{t:7.2,a:5,b:9},{t:9.8,a:7,b:3}];
+function scSchedule(w,h,st,gt){const ox=w/2,oy=h/2+8;
+  sceneTitle('Розклад: адміністратор тасує картки',st);
+  const cw=164*K,ch=70*K;
+  const cellPos=(c,r)=>[ox+(-255+c*170)*K,oy+(-102+r*76)*K];
+  // сітка
+  for(let c=0;c<4;c++)for(let r=0;r<4;r++){const[x,y]=cellPos(c,r);
+    ctx.strokeStyle='rgba(60,50,35,.18)';ctx.lineWidth=1;rr(x-cw/2,y-ch/2,cw,ch,7);ctx.stroke()}
+  ['ПН','ВТ','СР','ЧТ'].forEach((d,c)=>{const[x]=cellPos(c,0);
+    fnt(16,true);ctx.fillStyle='#2c2416';txt(d,x,oy-158*K)});
+  ['08:00','10:00','12:00','14:00'].forEach((tm,r)=>{const[,y]=cellPos(0,r);
+    fnt(12);ctx.fillStyle='#8a7f6d';txt(tm,ox-352*K,y+4*K,'right')});
+  function cardPos(i){const cd=CARDS[i];let p=cellPos(cd.c,cd.r),cell={c:cd.c,r:cd.r},sw=false;
+    for(const s of SWAPS){if(st>=s.t&&st<s.t+1.4){const u=eio(stag(st,s.t,1.4));
+      if(i===s.a||i===s.b){sw=true;const other=i===s.a?CARDS[s.b]:CARDS[s.a];
+        const A=cellPos(cd.c,cd.r),B=cellPos(other.c,other.r);
+        p=[lerp(A[0],B[0],u),lerp(A[1],B[1],u)-Math.sin(Math.PI*u)*46*K];
+        cell=u>0.5?{c:other.c,r:other.r}:{c:cd.c,r:cd.r}}break}}
+    const en=eob(stag(st,0.25+i*0.1,0.55));
+    return{x:p[0],y:p[1]-(1-en)*170*K,cell,en,sw}}
+  // адмін
+  const ax=ox+452*K,ay=oy-100*K+Math.sin(gt*2)*6*K;
+  fntE(38);txt('🧑‍💼',ax,ay);
+  for(const s of SWAPS){if(st>=s.t&&st<s.t+1.4){ctx.globalAlpha=.55;ctx.setLineDash([5,5]);
+    ctx.strokeStyle='#1e40af';ctx.lineWidth=2;
+    [s.a,s.b].forEach(ci=>{const p=cardPos(ci);ctx.beginPath();ctx.moveTo(ax-20*K,ay);
+      ctx.lineTo(p.x,p.y-20*K);ctx.stroke()});ctx.setLineDash([]);ctx.globalAlpha=1;break}}
+  // конфлікти (динамічно)
+  const byCol={};const poss=CARDS.map((_,i)=>cardPos(i));
+  poss.forEach((p,i)=>{(byCol[p.cell.c]=byCol[p.cell.c]||[]).push(i)});
+  const conflicts=[];
+  Object.values(byCol).forEach(list=>{for(let a=0;a<list.length;a++)for(let b=a+1;b<list.length;b++)
+    if(CARDS[list[a]].col===CARDS[list[b]].col)conflicts.push([list[a],list[b]])});
+  // картки
+  poss.forEach((p,i)=>{if(p.en<=0)return;
+    const cd=CARDS[i],w2=150*K,h2=54*K;
+    ctx.save();ctx.translate(p.x,p.y);ctx.globalAlpha=p.en;
+    ctx.fillStyle=cd.col;rr(-w2/2,-h2/2,w2,h2,9);ctx.fill();
+    ctx.strokeStyle='#3b3226';ctx.lineWidth=1.8;ctx.stroke();
+    ctx.beginPath();ctx.arc(-w2/2+20*K,0,11*K,0,TAU);ctx.fillStyle='rgba(255,255,255,.9)';ctx.fill();
+    fnt(13,true);ctx.fillStyle='#2c2416';txt(TCH[i][0],-w2/2+20*K,4.5*K);
+    fnt(14,true);ctx.fillStyle='#fff';txt(TCH[i],10*K,5*K);
+    ctx.restore();ctx.globalAlpha=1;
+    if(conflicts.some(pr=>pr.includes(i))&&st>2.2&&!p.sw){
+      ctx.strokeStyle='#dc2626';ctx.lineWidth=3+Math.sin(gt*8)*1.5;
+      rr(p.x-w2/2-3,p.y-h2/2-3,w2+6,h2+6,11);ctx.stroke()}});
+  conflicts.forEach(([a])=>{if(st>2.2){fntE(18);txt('⛔',poss[a].x+70*K,poss[a].y-32*K)}});
+  if(st>12.4){const gx=ox,gy=oy+200*K;shock(gx,gy,st,12.4,'#16a34a');confetti(gx,gy,st,12.4,26);
+    stamp('Без накладок!',gx,gy,26,'#16a34a',st,12.5,-0.06)}
+  caption('колір = викладач: в один день колір не повторюється',st,14.3,h-30)}
+
+// --- 11. Частоти + регістри ---
+function scTowersReg(w,h,st,gt){const ox=w/2,oy=h/2;
+  sceneTitle('Частоти та регістри',st);
+  card(ox-480*K,oy-215*K,460*K,430*K);card(ox+25*K,oy-215*K,460*K,430*K);
+  // ВЕЖІ
+  const tx=[-360,-250,-140,-250],ty=[-40,-110,-40,35],tc=[0,1,2,3];
+  const pairs=[[0,1],[0,3],[1,2],[1,3],[2,3]];
+  pairs.forEach(([a,b],k)=>{ctx.globalAlpha=.5;ctx.setLineDash([5,5]);ctx.strokeStyle='#94a3b8';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(ox+tx[a]*K,oy+ty[a]*K);ctx.lineTo(ox+tx[b]*K,oy+ty[b]*K);ctx.stroke();
+    ctx.setLineDash([]);ctx.globalAlpha=.4+.4*Math.sin(gt*7+k);fntE(14);
+    txt('⚡',(ox+tx[a]*K+ox+tx[b]*K)/2,(oy+ty[a]*K+oy+ty[b]*K)/2);ctx.globalAlpha=1});
+  function tower(x,y,col,i){ctx.fillStyle='#8d8371';ctx.fillRect(x-5*K,y-8*K,10*K,44*K);
+    ctx.beginPath();ctx.moveTo(x-16*K,y-8*K);ctx.lineTo(x,y-40*K);ctx.lineTo(x+16*K,y-8*K);ctx.closePath();
+    ctx.fillStyle='#6f6553';ctx.fill();ctx.strokeStyle='#3b3226';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.beginPath();ctx.arc(x,y-40*K,5*K,0,TAU);ctx.globalAlpha=.6+.4*Math.sin(gt*5+i*2);
+    ctx.fillStyle=col;ctx.fill();ctx.globalAlpha=1}
+  tx.forEach((x,i)=>{const px=ox+x*K,py=oy+ty[i]*K;
+    for(let r2=0;r2<3;r2++){const u=(gt*.5+i*.25+r2*.33)%1;
+      ctx.globalAlpha=(1-u)*.4;ctx.strokeStyle=PCOLORS[tc[i]];ctx.lineWidth=2.5*K;
+      ctx.beginPath();ctx.arc(px,py-40*K,(14+u*95)*K,0,TAU);ctx.stroke()}ctx.globalAlpha=1;
+    tower(px,py,PCOLORS[tc[i]],i);
+    fnt(12,true);ctx.fillStyle=PCOLORS[tc[i]];txt('F'+(i+1),px,py+56*K)});
+  chip('сусідні вежі → різні частоти',ox-250*K,oy+185*K,stag(st,1.5,0.5),'#1e40af');
+  // РЕГІСТРИ
+  const hx=[0,79.7,79.7,0,-79.7,-79.7],hy=[-92,-46,46,92,46,-46];
+  const vAssign=[0,1,2,0,2,1];
+  const vEdges=[[0,1],[1,2],[2,3],[3,4],[4,5],[5,0],[0,2],[1,3]];
+  const vcx=ox+258*K,vcy=oy-62*K;
+  vEdges.forEach((e,k)=>edge([vcx+hx[e[0]]*K,vcy+hy[e[0]]*K],[vcx+hx[e[1]]*K,vcy+hy[e[1]]*K],
+    eo(stag(st,1+k*0.15,0.4)),'#64748b',2*K));
+  const bins=[0,1,2,3],binUsed=[0,0,0,0];
+  const landT=i=>2.5+i*1.2;
+  const vState=Array.from({length:6},(_,i)=>{
+    const t0=landT(i),u=eio(stag(st,t0,0.8)),from=[vcx+hx[i]*K,vcy+hy[i]*K];
+    const bin=vAssign[i],slot=binUsed[bin]; // заповнюємо в порядку
+    return{i,t0,u,from,bin,slot}});
+  // рахуємо слоти коректно (за часом прилітання)
+  const order6=[0,1,2,3,4,5].sort((a,b)=>landT(a)-landT(b));const slotCnt={};
+  order6.forEach(v=>{const b=vAssign[v];slotCnt[b]=slotCnt[b]||0;vState[v].slot=slotCnt[b]++});
+  vState.forEach(vs=>{const bp=eob(stag(st,0.4+vs.i*0.12,0.4));
+    const col=PCOLORS[vAssign[vs.i]];
+    if(vs.u<=0){node(vs.from[0],vs.from[1],15*K,col,'v'+(vs.i+1),bp);return}
+    const bx=ox+(70+vs.bin*105)*K,by=oy+150*K;
+    const oxOff=(vs.slot===0?-16:vs.slot===1?16:0)*K;
+    const to=[bx+oxOff,by-14*K];
+    if(vs.u<1){const px=lerp(vs.from[0],to[0],vs.u),py=lerp(vs.from[1],to[1],vs.u)-Math.sin(Math.PI*vs.u)*70*K;
+      node(px,py,15*K,col,'v'+(vs.i+1),1);edge(vs.from,[px,py],0.0,'#000',0)}
+    else{node(to[0],to[1],12*K,col,'v'+(vs.i+1),1);
+      shock(to[0],to[1],st,vs.t0+0.8,'#16a34a',44)}});
+  bins.forEach(b=>{const bx=ox+(70+b*105)*K,by=oy+150*K;
+    ctx.fillStyle='#f1ece2';rr(bx-42*K,by-27*K,84*K,54*K,6);ctx.fill();
+    ctx.strokeStyle='#3b3226';ctx.lineWidth=1.8;ctx.stroke();
+    fnt(13,true);ctx.fillStyle='#6b5d4f';txt('R'+b,bx,by+44*K)});
+  chip('змінні → регістри процесора',ox+255*K,oy+185*K,stag(st,1.5,0.5),'#9333ea');
+  caption('Частоти, регістри, таймслоти — скрізь той самий граф!',st,12,h-36)}
+
+// --- 12. Судоку + тор ---
+function scSudokuTorus(w,h,st,gt){const ox=w/2,oy=h/2;
+  sceneTitle('Судоку та тор',st);
+  const SUD=[[1,2,3,4],[3,4,1,2],[2,1,4,3],[4,3,2,1]];
+  const gsz=62*K,gx=ox-240*K-gsz*2,gy=oy-gsz*2;
+  card(gx-14,gy-14,gsz*4+28,gsz*4+28);
+  for(let i=0;i<=4;i++){ctx.strokeStyle=i%2?'#94a3b8':'#2c2416';ctx.lineWidth=(i%2?1:2.2)*K;
+    ctx.beginPath();ctx.moveTo(gx+i*gsz,gy);ctx.lineTo(gx+i*gsz,gy+gsz*4);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(gx,gy+i*gsz);ctx.lineTo(gx+gsz*4,gy+i*gsz);ctx.stroke()}
+  SUD.forEach((row,r)=>row.forEach((d,c)=>{const t0=1+r*4*0.16+c*0.16+ r*0.2;
+    const u=eob(stag(st,0.9+(r*4+c)*0.16,0.45));if(u<=0)return;
+    const x=gx+c*gsz+gsz/2,y=gy+r*gsz+gsz/2-(1-u)*80*K;
+    ctx.globalAlpha=Math.min(1,u*1.4);fnt(26,true);ctx.fillStyle=PCOLORS[d-1];txt(String(d),x,y+9*K);ctx.globalAlpha=1}));
+  for(let c=0;c<4;c++){const u=Math.sin(Math.PI*stag(st,8.3+c*0.35,0.5));
+    if(u>0.02){ctx.fillStyle='rgba(30,64,175,'+0.22*u+')';ctx.fillRect(gx+c*gsz,gy,gsz,gsz*4)}}
+  for(let r=0;r<4;r++){const u=Math.sin(Math.PI*stag(st,10.2+r*0.3,0.5));
+    if(u>0.02){ctx.fillStyle='rgba(220,38,38,'+0.18*u+')';ctx.fillRect(gx,gy+r*gsz,gsz*4,gsz)}}
+  chip('цифра = колір вершини',ox-240*K,oy+175*K,stag(st,3,0.5),'#1e40af');
+  // ТОР
+  const cx2=ox+245*K,cy2=oy-15*K,rx=150*K,ry=85*K;
+  for(let k=0;k<7;k++){const u=eio(stag(st,3.6+k*0.8,0.7));if(u<=0)continue;
+    const yTop=-85*K+k*(170*K/7),bh=170*K/7+0.6;
+    ctx.save();ctx.beginPath();ctx.ellipse(cx2,cy2,rx,ry,0,0,TAU);
+    ctx.ellipse(cx2,cy2,rx*.32,ry*.28,0,0,TAU);ctx.clip('evenodd');
+    ctx.globalAlpha=Math.min(1,u*1.2);ctx.fillStyle=PCOLORS[k];
+    ctx.fillRect(cx2-rx,cy2+yTop,rx*2*u,bh);ctx.restore();ctx.globalAlpha=1}
+  ctx.beginPath();ctx.ellipse(cx2,cy2,rx,ry,0,0,TAU);ctx.strokeStyle='#3b3226';ctx.lineWidth=2.5*K;ctx.stroke();
+  ctx.beginPath();ctx.ellipse(cx2,cy2,rx*.32,ry*.28,0,0,TAU);ctx.stroke();
+  stamp('Тор: χ = 7 · Heawood',cx2,cy2+135*K,24,'#7c3aed',st,10.5,-0.07);
+  fntE(30);const dp=eob(stag(st,12,0.5));if(dp>0){ctx.save();ctx.translate(cx2+180*K,cy2-100*K);
+    ctx.scale(dp,dp);txt('🍩',0,0);ctx.restore()}
+  caption('На бублику чотирьох фарб уже мало — потрібно сім!',st,12.6,h-40)}
+
+// --- 13. Фінал ---
+function scFinale(w,h,st,gt){const ox=w/2,oy=h/2;
+  for(let i=0;i<26;i++){const x=rnd(i*3+2)*w,y=h-((gt*36+rnd(i+4)*h*1.3)%(h+70));
+    ctx.globalAlpha=.3;ctx.fillStyle=PCOLORS[i%4];ctx.beginPath();ctx.arc(x,y,3.2*K,0,TAU);ctx.fill()}
+  ctx.globalAlpha=1;
+  const R=.85*K,cyy=oy-55*K,ca=Math.cos(gt*.35),sa=Math.sin(gt*.35);
+  const npos=GRAPH_POS.map(p=>{const x=p[0]*R,y=p[1]*R;
+    return[ox+x*ca-y*sa,cyy+x*sa+y*ca+Math.sin(gt*2)*3*K]});
+  GRAPH_EDGES.forEach(([a,b])=>edge(npos[a],npos[b],1,'#1e40af',3.2*K));
+  npos.forEach((n,i)=>node(n[0],n[1],13*K,MAP_COLORS4[i],null,1));
+  const tp=eo(stag(st,0.8,0.8));
+  if(tp>0){ctx.globalAlpha=tp;fnt(44,true);ctx.fillStyle='#2c2416';
+    txt('Graph Coloring',ox,oy+72*K+(1-tp)*20);ctx.globalAlpha=1}
+  const sp2=eo(stag(st,2,0.7));if(sp2>0){ctx.globalAlpha=sp2;fnt(20);ctx.fillStyle='#6b5d4f';
+    txt('χ(G) — хроматичне число графа',ox,oy+106*K);ctx.globalAlpha=1}
+  for(let i=0;i<4;i++){const p=eob(stag(st,3+i*0.18,0.5));if(p>0)
+    drawCan(ox-160*K+i*106*K,oy+158*K+Math.sin(gt*2+i)*4*K,PCOLORS[i],'',p)}
+  caption('Дякую за увагу!',st,4.6,h-54);
+  const cp=eo(stag(st,6.5,0.8));if(cp>0){ctx.globalAlpha=cp*.7;fnt(14);ctx.fillStyle='#8a7f6d';
+    txt('4 фарби · безліч графів · Canvas + Web Speech API',ox,h-22);ctx.globalAlpha=1}
+  if(finished){ctx.globalAlpha=.55+.45*Math.sin(gt*3);fnt(20,true);ctx.fillStyle='#1e40af';
+    txt('⟲  Натисніть ▶, щоб переглянути ще раз',ox,h-88);ctx.globalAlpha=1}}
+
+/* ================= СПИСОК СЦЕН ================= */
+const scenes=[
+ {tick:'Титул',dur:9,draw:scTitle,text:'Розфарбування графів — одна з найкрасивіших задач дискретної математики. Почнімо з простого питання про кольорову мапу.'},
+ {tick:'Мапа',dur:18,draw:scMapPaint,text:'Уявіть: потрібно розфарбувати країни так, щоб жодні два сусіди не мали одного кольору. Беремо пензель — і фарбуємо країну за країною. Три фарби. Здається, працюють...'},
+ {tick:'Конфлікт',dur:14,draw:scConflict,text:'Але ось проблема: країни навколо центру зайняли всі три кольори. Центральної країні не дісталося жодної!'},
+ {tick:'4-та фарба',dur:12,draw:scFourth,text:'Додаємо четверту фарбу — і конфлікт зникає. Чотирьох фарб достатньо для будь-якої мапи на площині.'},
+ {tick:'Мапа→Граф',dur:16,draw:scMorph,text:'Математики мислять абстрактно: кожну країну стягуємо у вершину графа, а кожен спільний кордон перетворюємо на ребро. Мапа моделюється планарним графом.'},
+ {tick:'χ(G)',dur:14,draw:scFormal,text:'Формально: розфарбування графа — це призначення кольорів вершинам так, щоб кінці кожного ребра мали різні кольори. Мінімальна кількість кольорів називається хроматичним числом.'},
+ {tick:'Приклади',dur:16,draw:scExamples,text:'Приклади: дерево обходиться двома кольорами. Трикутник вимагає трьох. А повний граф із з пятьма вершини — 5, бо кожна вершина з єднана з кожною.'},
+ {tick:'Жадібний',dur:16,draw:scGreedy,text:'Як фарбувати на практиці? Спробуємо Жадібний алгоритм. Беремо вершини по черзі й обираємо найменший доступний колір. Просто, але не завжди оптимально.'},
+ {tick:'Теорема 4Ф',dur:18,draw:scTheorem,text:'Теорема про чотири фарби. Будь-яку плоску мапу можна розфарбувати чотирма кольорами. Доведення 1976 року — перше в історії математики доведення за допомогою комп ютера. Воно займає сотні сторінок і тисячі конфігурацій, перевірених комп ютером.'},
+ {tick:'NP-повнота',dur:16,draw:scNP,text:'А от знайти мінімальне розфарбування довільного графа — NP-повна задача. Кількість варіантів зростає як чотири в степені ен — швидше, ніж старіє Всесвіт.'},
+ {tick:'Розклад',dur:20,draw:scSchedule,text:'Де це працює? Складання розкладу: адміністратор тасує пари, поки не буде ситуацій, де викладач не опиниться в двох аудиторіях одночасно.'},
+ {tick:'Частоти',dur:18,draw:scTowersReg,text:'Мобільні вежі ділять частоти: сусідні вежі працюють на різних каналах. А компілятор розкладає змінні по регістрах процесора — це теж розфарбування графа.'},
+ {tick:'Судоку·Тор',dur:16,draw:scSudokuTorus,text:'І навіть судоку — замасковане розфарбування: цифри не повторюються в рядку, стовпці й блоці. А на поверхні тора знадобиться вже сім фарб.'},
+ {tick:'Фінал',dur:12,draw:scFinale,text:'Тож наступного разу, дивлячись на кольорову мапу, згадайте графи та комп ютери, які доводять теореми.'}];
+const cum=[];let acc0=0;scenes.forEach(s=>{cum.push(acc0);acc0+=s.dur});
+const TOTAL=acc0;
+
+/* ================= TTS (гібрид) ================= */
+const synth=window.speechSynthesis;
+let engine='google',userPicked=false,gAudio=null,gToken=0;
+let voiceScene=-1,ttsDone=true,ttsActive=false;
+function detect(){if(userPicked)return;const vs=(synth&&synth.getVoices?synth.getVoices():[])||[];
+  const uk=vs.some(v=>v.lang&&v.lang.toLowerCase().startsWith('uk'));
+  updateEngineUI()}
+if(synth){detect();if(synth.onvoiceschanged!==undefined)synth.onvoiceschanged=detect}
+function updateEngineUI(){engineSeg.querySelectorAll('button').forEach(b=>
+  b.classList.toggle('on',b.dataset.e===engine))}
+function splitChunks(text,maxLen){const ss=text.match(/[^.!?]+[.!?]+/g)||[text];
+  const out=[];let cur='';ss.forEach(s=>{if((cur+s).length>maxLen&&cur){out.push(cur.trim());cur=s}else cur+=s});
+  if(cur)out.push(cur.trim());return out}
+function speak(text,sceneIdx){voiceScene=sceneIdx;ttsDone=false;ttsActive=true;
+  const done=()=>{if(voiceScene===sceneIdx){ttsDone=true;ttsActive=false}};
+  if(engine==='none'){ttsDone=true;ttsActive=false;return}
+  if(engine==='webspeech'&&synth){try{synth.cancel()}catch(e){}
+    const u=new SpeechSynthesisUtterance(text);u.lang='uk-UA';
+    u.rate=clamp(0.95*speed,0.5,2);u.pitch=1;
+    u.onend=done;u.onerror=done;synth.speak(u);if(synth.paused)synth.resume()}
+  else if(engine==='hf'){const myTok=++gToken;hfWait=true;
+    (async()=>{
+      if(!await hfEnsure()){if(myTok===gToken)hfFallback(text,sceneIdx);return}
+      const ch=hfSplit(text,110),ps=ch.map(c=>hfSynth(c));ps.forEach(p=>p.catch(()=>{}));{const nx=scenes[sceneIdx+1];if(nx)hfSynth(hfSplit(nx.text,110)[0]).catch(()=>{})}
+      for(let i=0;i<ch.length;i++){let url;
+        if(i>0)hfWait=true;try{url=await ps[i]}catch(e){console.error('UA нейро:',e);if(myTok===gToken)hfFallback(text,sceneIdx);return}
+        if(myTok!==gToken)return;
+        hfWait=false;
+        await new Promise(res=>{const a=new Audio(url);a.playbackRate=speed;gAudio=a;
+          const txt=ch[i];a.addEventListener('loadedmetadata',()=>console.log('[UA нейро]',txt.length,'знаків →',a.duration.toFixed(1),'с:',txt));
+          a.onended=res;a.onerror=res;
+          const pl=a.play();if(pl)pl.catch(e=>{if(!(e&&e.name==='AbortError'))res()});
+          if(isPaused)a.pause()});
+        if(myTok!==gToken)return}
+      done()})().catch(e=>{console.error(e);hfWait=false;done()})}
+  else{const myTok=++gToken,ch=splitChunks(text,180);let i=0;
+    (function next(){if(myTok!==gToken)return;
+      if(i>=ch.length){done();return}
+      const a=new Audio('https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=uk&q='+encodeURIComponent(ch[i]));
+      gAudio=a;a.onended=()=>{i++;next()};a.onerror=()=>{i++;next()};
+      a.play().catch(()=>{i++;next()})})()}}
+/* ---- UA нейро: демо robinhad/ukrainian-tts на Hugging Face (відкат -> Google TTS) ---- */
+const HF_SPACE='robinhad/ukrainian-tts',HF_HOST='https://robinhad-ukrainian-tts.hf.space',
+  HF_CLIENT='https://cdn.jsdelivr.net/npm/@gradio/client@2.6.0/dist/index.min.js';
+const hfVoiceSel=document.getElementById('hfVoice');
+let hfApp=null,hfConn=null,hfMsg='',hfWait=false,hfQ=Promise.resolve(),hfApi='/predict';const hfCache=new Map();
+const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout '+ms)),ms))]);
+function hfEnsure(){if(hfConn)return hfConn;
+  hfConn=(async()=>{hfMsg='⏳';const m=await import(HF_CLIENT);
+    hfApp=await withTimeout(m.Client.connect(HF_SPACE),60000);hfMsg='';return true})()
+    .catch(e=>{console.error('UA нейро:',e);hfMsg='⚠ UA нейро недоступне → Google';hfConn=null;return false});
+  return hfConn}
+function hfSynth(t){const v=hfVoiceSel.value,k=v+'|'+t;if(hfCache.has(k))return hfCache.get(k);
+  hfQ.catch(()=>{});
+  const pr=(hfQ=hfQ.catch(()=>{}).then(async()=>{let last;
+    for(const n of [hfApi,'/tts']){const t0=Date.now();
+      try{const r=await withTimeout(hfApp.predict(n,[t,v]),90000);
+        const f=r&&r.data&&r.data[0];const u=f&&(f.url||(f.path&&HF_HOST+'/file='+f.path));
+        if(!u)throw new Error('немає аудіо у відповіді');hfApi=n;return u}
+      catch(e){last=e;if(Date.now()-t0>4000)break}}
+    throw last}));
+  hfCache.set(k,pr);pr.catch(()=>hfCache.delete(k));return pr}
+/* Ділимо лише за межами речень (. ! ? …): кома чи тире всередині речення не повинні ставати «крапкою».
+   Короткі сусідні речення склеюємо до max знаків. Дуже довге речення (>220) ділимо лише за ; або : */
+function hfSplit(text,max){
+  const ss=(text.match(/[^.!?…]+[.!?…]+["»”)]*|[^.!?…]+$/g)||[text]).map(x=>x.trim()).filter(Boolean);
+  const out=[];
+  ss.forEach(x=>{if(x.length<=220){out.push(x);return}
+    let cur='';x.split(/(?<=[;:])\s+/).forEach(q=>{
+      if(cur&&(cur+' '+q).length>max){out.push(cur);cur=q}else cur=cur?cur+' '+q:q});
+    if(cur)out.push(cur)});
+  const m=[];out.forEach(q=>{if(m.length&&(m[m.length-1]+' '+q).length<=max)m[m.length-1]+=' '+q;else m.push(q)});
+  return m.length?m:[text]}
+function hfFallback(text,idx){hfWait=false;engine='google';updateEngineUI();
+  if(!hfMsg)hfMsg='⚠ UA нейро недоступне → Google';speak(text,idx)}
+hfVoiceSel.onchange=()=>{if(engine==='hf'&&isPlaying&&!isPaused){stopSpeaking();speakScene()}};
+
+function stopSpeaking(){hfWait=false;gToken++;if(gAudio){gAudio.pause();gAudio=null}
+  if(synth){try{synth.cancel()}catch(e){}}
+  ttsActive=false;ttsDone=true}
+
+/* ================= ПЛЕЄР ================= */
+let currentScene=0,sceneTime=0,globalTime=0,isPlaying=false,isPaused=false,
+    hasStarted=false,finished=false,holdTimer=0,speed=1;
+
+function setPlayIcon(playing){icoPlay.style.display=playing?'none':'';
+  icoPause.style.display=playing?'':'none'}
+function setSubtitle(sc){if(chkSubs.checked){subtitleEl.innerHTML='<b>'+sc.tick+'</b> — '+sc.text;
+  subtitleEl.style.opacity='1'}else subtitleEl.style.opacity='0'}
+function startScene(i){currentScene=clamp(i,0,scenes.length-1);sceneTime=0;holdTimer=0;
+  const sc=scenes[currentScene];setSubtitle(sc);stopSpeaking();
+  if(isPlaying)speak(sc.text,currentScene);updateSceneButtons()}
+function speakScene(){const sc=scenes[currentScene];setSubtitle(sc);speak(sc.text,currentScene)}
+function startShow(){hasStarted=true;finished=false;isPlaying=true;isPaused=false;
+  setPlayIcon(true);startScene(0)}
+function doPause(){isPaused=true;setPlayIcon(false);
+  if(engine==='webspeech'&&synth)synth.pause();
+  if((engine==='google'||engine==='hf')&&gAudio)gAudio.pause()}
+function doResume(){isPaused=false;setPlayIcon(true);
+  if(engine==='webspeech'&&synth)synth.resume();
+  if((engine==='google'||engine==='hf')&&gAudio)gAudio.play()}
+function togglePlay(){if(!hasStarted){startShow();return}
+  if(!isPlaying){finished=false;isPlaying=true;isPaused=false;setPlayIcon(true);speakScene();return}
+  isPaused?doResume():doPause()}
+function stopShow(){isPlaying=false;isPaused=false;finished=false;setPlayIcon(false);
+  stopSpeaking();currentScene=0;sceneTime=0;holdTimer=0;
+  subtitleEl.style.opacity='0';updateSceneButtons()}
+function seekScene(i){i=clamp(i,0,scenes.length-1);stopSpeaking();finished=false;
+  currentScene=i;sceneTime=0;holdTimer=0;updateSceneButtons();
+  if(isPlaying&&!isPaused)speakScene();else setSubtitle(scenes[i])}
+function seekTime(T){let i=0;while(i<scenes.length-1&&T>=cum[i+1])i++;
+  stopSpeaking();finished=false;currentScene=i;sceneTime=T-cum[i];holdTimer=0;
+  updateSceneButtons();if(isPlaying&&!isPaused)speakScene();else setSubtitle(scenes[i])}
+
+btnPlay.onclick=togglePlay;
+btnStop.onclick=stopShow;
+btnNext.onclick=()=>seekScene(currentScene+1);
+btnPrev.onclick=()=>seekScene(currentScene-1);
+progressZone.onclick=e=>{const r=progressZone.getBoundingClientRect();
+  seekTime(clamp((e.clientX-r.left)/r.width,0,1)*TOTAL)};
+engineSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{userPicked=true;
+  engine=b.dataset.e;updateEngineUI();stopSpeaking();if(engine==='hf')hfEnsure();
+  if(isPlaying&&!isPaused)speakScene()});
+speedSel.onchange=()=>{speed=parseFloat(speedSel.value)};
+chkSubs.onchange=()=>{if(!chkSubs.checked)subtitleEl.style.opacity='0';
+  else setSubtitle(scenes[currentScene])};
+chkDebug.onchange=()=>{debugSection.style.display=chkDebug.checked?'block':'none'};
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'){e.preventDefault();togglePlay()}
+  else if(e.code==='ArrowRight')seekScene(currentScene+1);
+  else if(e.code==='ArrowLeft')seekScene(currentScene-1);
+  else if(e.code==='KeyR')stopShow()});
+canvas.addEventListener('click',()=>{if(!hasStarted)startShow()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)lastTs=performance.now()});
+
+// засічки + підписи
+const tickEls=[];
+scenes.forEach((sc,i)=>{const t=document.createElement('div');t.className='tick';
+  t.style.left=(cum[i]/TOTAL*100)+'%';t.title=(i+1)+'. '+sc.tick+' ('+sc.dur+' с)';
+  t.onclick=e=>{e.stopPropagation();seekScene(i)};ticksLayer.appendChild(t);tickEls.push(t);
+  const l=document.createElement('div');l.className='tick-label';l.style.left=(cum[i]/TOTAL*100)+'%';
+  l.textContent=sc.tick;ticksLayer.appendChild(l)});
+function updateLabelsVis(){ticksLayer.querySelectorAll('.tick-label').forEach(l=>
+  l.style.display=chkLabels.checked?'':'none')}
+chkLabels.onchange=updateLabelsVis;updateLabelsVis();
+// дебаг-список
+scenes.forEach((sc,i)=>{const b=document.createElement('button');
+  b.textContent=fmt(cum[i])+' · '+sc.tick;b.onclick=()=>seekScene(i);
+  sceneListEl.appendChild(b)});
+function updateSceneButtons(){sceneListEl.querySelectorAll('button').forEach((b,i)=>
+  b.classList.toggle('active',i===currentScene));
+  sceneIndicator.textContent=(currentScene+1)+'/'+scenes.length+' · '+scenes[currentScene].tick}
+function fmt(s){s=Math.floor(s);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function updateHud(){const sc=scenes[currentScene];
+  const cur=cum[currentScene]+Math.min(sceneTime,sc.dur);
+  progressFill.style.width=(cur/TOTAL*100)+'%';
+  timeDisp.textContent=fmt(cur)+' / '+fmt(TOTAL);
+  tickEls.forEach((t,i)=>t.classList.toggle('active',i===currentScene));
+  voiceState.textContent=(engine==='none'?'🔇':(ttsActive?'🔊':'🔈'))+(hfMsg?' '+hfMsg:'');
+  voiceState.classList.toggle('active',ttsActive)}
+updateSceneButtons();
+
+/* ================= ГОЛОВНИЙ ЦИКЛ ================= */
+let lastTs=performance.now();
+function overlayStart(){ctx.fillStyle='rgba(28,22,12,.45)';ctx.fillRect(0,0,W,H);
+  const pu=1+0.05*Math.sin(performance.now()/300);
+  ctx.save();ctx.translate(W/2,H/2-30);ctx.scale(pu,pu);
+  ctx.beginPath();ctx.arc(0,0,54,0,TAU);ctx.fillStyle='rgba(255,255,255,.95)';ctx.fill();
+  ctx.strokeStyle='#e11d48';ctx.lineWidth=5;ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-14,-22);ctx.lineTo(-14,22);ctx.lineTo(24,0);ctx.closePath();
+  ctx.fillStyle='#e11d48';ctx.fill();ctx.restore();
+  fnt(22,true);ctx.fillStyle='#fff';txt('Натисніть, щоб дивитись з озвученням',W/2,H/2+70);
+  fnt(15);ctx.fillStyle='rgba(255,255,255,.8)';
+  txt('Space — пауза · ←/→ — сцени · клік по шкалі — перемотка',W/2,H/2+102)}
+
+function frame(ts){const rawDt=Math.min(0.1,(ts-lastTs)/1000);lastTs=ts;
+  if(isPlaying&&!isPaused&&!(engine==='hf'&&hfWait)){const dt=rawDt*speed;globalTime+=dt;sceneTime+=dt;
+    const sc=scenes[currentScene];
+    const animDone=sceneTime>=sc.dur;
+    const voiceOK=engine==='none'||ttsDone||sceneTime>sc.dur+(engine==='webspeech'?30:60);
+    if(animDone&&voiceOK){holdTimer+=dt;
+      if(holdTimer>=0.7){
+        if(currentScene<scenes.length-1)startScene(currentScene+1);
+        else{finished=true;isPlaying=false;isPaused=false;setPlayIcon(false);stopSpeaking()}}}
+    else holdTimer=0}
+  // фон
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#fbf7f0');g.addColorStop(1,'#f2ebdd');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  scenes[currentScene].draw(W,H,sceneTime,globalTime);
+  const f=1-stag(sceneTime,0,0.45);
+  if(f>0&&hasStarted){ctx.fillStyle='rgba(251,247,240,'+f*0.6+')';ctx.fillRect(0,0,W,H)}
+  if(hasStarted&&engine==='hf'&&hfWait){ctx.fillStyle='rgba(30,30,30,.75)';ctx.font='bold 16px Arial';ctx.textAlign='left';ctx.fillText('Готую озвучення…',16,H-16)}
+  if(!hasStarted)overlayStart();
+  updateHud();
+  requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Проблема зупинки — анімована презентація</title>
+<style>
+:root{--bg:#f6f1e7;--txt:#2c2416;--mut:#6b5d4f;--red:#e11d48}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Georgia,'Times New Roman',serif;background:var(--bg);color:var(--txt);
+  display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:18px}
+.container{width:100%;max-width:1240px;display:flex;flex-direction:column}
+.presentation{width:100%;aspect-ratio:16/9;background:#fff;border:2px solid #d4cfc7;
+  border-radius:10px 10px 0 0;position:relative;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+canvas{width:100%;height:100%;display:block;cursor:pointer}
+.scene-indicator{position:absolute;top:14px;right:14px;background:rgba(30,64,175,.92);color:#fff;
+  padding:5px 12px;border-radius:5px;font-size:13px;font-weight:bold;pointer-events:none}
+.subtitle{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
+  background:rgba(255,255,255,.95);padding:10px 20px;border-radius:8px;border:1px solid #d4cfc7;
+  font-size:17px;max-width:82%;text-align:center;line-height:1.45;box-shadow:0 2px 10px rgba(0,0,0,.12);
+  transition:opacity .3s;pointer-events:none}
+.subtitle b{color:#1e40af}
+.controls{background:linear-gradient(#241c15,#15100b);border-radius:0 0 10px 10px;padding:6px 14px 12px}
+.progress-zone{position:relative;height:40px;cursor:pointer}
+.progress-track{position:absolute;left:0;right:0;top:15px;height:5px;background:rgba(255,255,255,.16);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;width:0;background:linear-gradient(90deg,#e11d48,#f43f5e);border-radius:3px}
+.tick{position:absolute;top:11px;width:3px;height:13px;background:rgba(255,255,255,.45);border-radius:2px;transform:translateX(-1px)}
+.tick:hover{background:#fff}
+.tick.active{background:#fbbf24;box-shadow:0 0 6px #fbbf24}
+.tick-label{position:absolute;top:27px;transform:translateX(-50%);font-size:10px;color:rgba(255,255,255,.62);
+  white-space:nowrap;pointer-events:none;font-family:Arial,sans-serif}
+.btn-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.ctl{background:transparent;border:none;cursor:pointer;width:34px;height:34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;transition:background .2s}
+.ctl:hover{background:rgba(255,255,255,.12)}
+.ctl svg{width:19px;height:19px;fill:#fff}
+.time{color:#fff;font:13px Arial;margin-left:4px;min-width:96px}
+.seg{display:flex;border:1px solid rgba(255,255,255,.18);border-radius:7px;overflow:hidden}
+.seg button{background:transparent;border:none;color:#cfc7ba;padding:5px 10px;font:12px Arial;cursor:pointer}
+.seg button+button{border-left:1px solid rgba(255,255,255,.14)}
+.seg button.on{background:var(--red);color:#fff}
+select{background:#2a221b;color:#eee;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px 6px;font:12px Arial}
+.chk{display:flex;align-items:center;gap:5px;color:#d9d2c5;font:13px Arial;cursor:pointer;user-select:none}
+.chk input{accent-color:var(--red);width:15px;height:15px;cursor:pointer}
+.voice{margin-left:auto;color:#fff;font:15px Arial;background:rgba(255,255,255,.1);border-radius:5px;padding:3px 9px}
+.voice.active{animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.45}}
+.debug-section{margin-top:14px;background:#fff;border:2px solid #d4cfc7;border-radius:8px;padding:14px}
+.debug-section h3{font-size:14px;color:var(--mut);margin-bottom:10px}
+.scene-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:7px}
+.scene-list button{padding:7px;border:2px solid #d4cfc7;border-radius:6px;background:#fff;color:var(--txt);
+  font:12px Georgia;cursor:pointer;text-align:left}
+.scene-list button:hover{border-color:#1e40af}
+.scene-list button.active{background:#1e40af;color:#fff;border-color:#1e40af}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="presentation">
+    <canvas id="canvas"></canvas>
+    <div class="scene-indicator" id="sceneIndicator"></div>
+    <div class="subtitle" id="subtitle" style="opacity:0"></div>
+  </div>
+
+  <div class="controls">
+    <div class="progress-zone" id="progressZone">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div id="ticksLayer"></div>
+    </div>
+    <div class="btn-row">
+      <button class="ctl" id="btnPlay" title="Грати / Пауза (Space)"><span id="icoPlay"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span><span id="icoPause" style="display:none"><svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg></span></button>
+      <button class="ctl" id="btnStop" title="Спочатку (R)"><svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg></button>
+      <button class="ctl" id="btnPrev" title="Попередня сцена (←)"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+      <button class="ctl" id="btnNext" title="Наступна сцена (→)"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+      <span class="time" id="timeDisp">0:00 / 0:00</span>
+      <div class="seg" id="engineSeg" title="Рушій озвучення">
+        <button data-e="hf" title="Українська нейромережа (безкоштовне демо на Hugging Face)">UA нейро</button>
+        <button data-e="webspeech">Web Speech</button>
+        <button data-e="google" class="on">Google TTS</button>
+        <button data-e="none">Тихо</button>
+      </div>
+      <select id="hfVoice" title="Голос (для UA нейро)"><option value="Тетяна (жіночий) 👩">Тетяна</option><option value="Лада (жіночий) 👩">Лада</option><option value="Дмитро (чоловічий) 👨">Дмитро</option><option value="Микита (чоловічий) 👨" selected>Микита</option><option value="Олекса (чоловічий) 👨">Олекса</option></select>
+      <select id="speedSel" title="Швидкість">
+        <option value="0.75">0.75×</option><option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option><option value="1.5">1.5×</option>
+      </select>
+      <label class="chk"><input type="checkbox" id="chkSubs" checked><span>Субтитри</span></label>
+      <label class="chk"><input type="checkbox" id="chkLabels" checked><span>Назви сцен</span></label>
+      <label class="chk"><input type="checkbox" id="chkDebug"><span>Дебаг</span></label>
+      <span class="voice" id="voiceState">🔈</span>
+    </div>
+  </div>
+
+  <div class="debug-section" id="debugSection" style="display:none">
+    <h3>🔧 Перейти до сцени</h3>
+    <div class="scene-list" id="sceneList"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================= БАЗА ================= */
+const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d');
+const subtitleEl=document.getElementById('subtitle'),sceneIndicator=document.getElementById('sceneIndicator');
+const progressZone=document.getElementById('progressZone'),progressFill=document.getElementById('progressFill');
+const timeDisp=document.getElementById('timeDisp'),voiceState=document.getElementById('voiceState');
+const ticksLayer=document.getElementById('ticksLayer'),sceneListEl=document.getElementById('sceneList');
+const debugSection=document.getElementById('debugSection');
+const chkSubs=document.getElementById('chkSubs'),chkLabels=document.getElementById('chkLabels'),chkDebug=document.getElementById('chkDebug');
+const btnPlay=document.getElementById('btnPlay'),btnStop=document.getElementById('btnStop'),
+      btnPrev=document.getElementById('btnPrev'),btnNext=document.getElementById('btnNext'),
+      icoPlay=document.getElementById('icoPlay'),icoPause=document.getElementById('icoPause'),
+      speedSel=document.getElementById('speedSel'),engineSeg=document.getElementById('engineSeg');
+
+let W=0,H=0,K=1,DPR=1;
+function resize(){const r=canvas.getBoundingClientRect();DPR=window.devicePixelRatio||1;
+  W=r.width;H=r.height;canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);
+  K=Math.max(.6,Math.min(1.1,W/1150));}
+window.addEventListener('resize',resize);resize();
+
+const TAU=Math.PI*2;
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const lerp2=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t)];
+const eo=t=>1-Math.pow(1-t,3);
+const eio=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const eob=t=>{const c=1.70158;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2)};
+const stag=(t,s,d)=>clamp((t-s)/d,0,1);
+const rnd=i=>{const x=Math.sin(i*127.1+311.7)*43758.5453;return x-Math.floor(x)};
+const BLUE='#2563eb',RED='#dc2626';
+let gtNow=0;
+function fnt(px,bold){ctx.font=(bold?'bold ':'')+Math.round(px*K)+'px Georgia,"Times New Roman",serif'}
+function fntE(px){ctx.font=Math.round(px*K)+'px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif'}
+function txt(t,x,y,al){ctx.textAlign=al||'center';ctx.fillText(t,x,y)}
+function rr(x,y,w,h,r){r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+function card(x,y,w,h){ctx.fillStyle='rgba(255,255,255,.93)';rr(x,y,w,h,10*K);ctx.fill();
+  ctx.strokeStyle='#d4cfc7';ctx.lineWidth=1.5*K;ctx.stroke()}
+function chip(text,x,y,al,col){col=col||'#1e40af';if(al<=0)return;ctx.globalAlpha=al;fnt(16,true);
+  const tw=ctx.measureText(text).width;ctx.fillStyle='rgba(255,255,255,.95)';rr(x-tw/2-10*K,y-14*K,tw+20*K,26*K,7*K);ctx.fill();
+  ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.stroke();ctx.fillStyle=col;txt(text,x,y+5*K);ctx.globalAlpha=1}
+function stamp(text,x,y,size,color,st,t0,rot){const p=eob(stag(st,t0,0.45));if(p<=0)return;
+  ctx.save();ctx.translate(x,y);ctx.rotate((rot||-0.1)*(1-p*.5));ctx.scale(p,p);
+  fnt(size,true);const w2=ctx.measureText(text).width+36*K;
+  ctx.fillStyle='rgba(255,255,255,.93)';rr(-w2/2,-size*.72*K,w2,size*1.44*K,10*K);ctx.fill();
+  ctx.strokeStyle=color;ctx.lineWidth=3*K;ctx.stroke();ctx.fillStyle=color;txt(text,0,size*.34*K);ctx.restore()}
+function shock(x,y,st,t0,color,R){R=R||180;const u=stag(st,t0,0.9);if(u<=0||u>=1)return;
+  ctx.strokeStyle=color;ctx.globalAlpha=(1-u)*.8;ctx.lineWidth=(4*(1-u)+1)*K;
+  ctx.beginPath();ctx.arc(x,y,u*R*K,0,TAU);ctx.stroke();ctx.globalAlpha=1}
+function confetti(x,y,st,t0,n){for(let i=0;i<n;i++){const u=(st-t0)-i*.012;if(u<0||u>2.6)continue;
+  const a=rnd(i)*TAU,v=(110+rnd(i+50)*170)*K,dx=Math.cos(a)*v*u*.6,dy=Math.sin(a)*v*u*.6+140*K*u*u;
+  ctx.globalAlpha=clamp(1-u/2.6,0,1);ctx.fillStyle=[BLUE,RED,'#eab308','#16a34a'][i%4];
+  ctx.beginPath();ctx.arc(x+dx,y+dy,3.5*K,0,TAU);ctx.fill()}ctx.globalAlpha=1}
+function typeText(text,st,t0){const n=Math.floor(Math.max(0,(st-t0))*30);if(n<=0)return null;
+  return text.slice(0,n)+(n<text.length&&Math.floor(gtNow*3)%2?'▌':'')}
+function caption(text,st,t0,y){const shown=typeText(text,st,t0);if(!shown)return;
+  fnt(19);const tw=ctx.measureText(text).width;
+  ctx.fillStyle='rgba(255,255,255,.88)';rr(W/2-tw/2-14,y-24*K,tw+28,34*K,8);ctx.fill();
+  ctx.strokeStyle='#d4cfc7';ctx.lineWidth=1;ctx.stroke();ctx.fillStyle='#4a3f2e';txt(shown,W/2,y)}
+function sceneTitle(t,st,col){col=col||'#2c2416';const p=eob(stag(st,0.1,0.6));if(p>0){
+  ctx.save();ctx.translate(W/2,44);ctx.scale(Math.max(.001,p),Math.max(.001,p));
+  fnt(30,true);ctx.fillStyle=col;txt(t,0,0);ctx.restore()}
+  const u=eo(stag(st,0.4,0.5));if(u>0){ctx.strokeStyle='#e11d48';ctx.lineWidth=3*K;ctx.beginPath();
+  ctx.moveTo(W/2-95*K*u,56);ctx.lineTo(W/2+95*K*u,56);ctx.stroke()}}
+function arrowHead(x,y,ang,size,col,a){if(a<=0)return;ctx.save();ctx.translate(x,y);ctx.rotate(ang);ctx.globalAlpha=a;
+  ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(-size,-size*0.7);ctx.lineTo(size*0.6,0);ctx.lineTo(-size,size*0.7);ctx.closePath();ctx.fill();ctx.restore()}
+function curveArrow(x1,y1,x2,y2,bend,col,pop,lw){if(pop<=0)return;const mx=(x1+x2)/2,my=(y1+y2)/2;
+  const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy)||1;const nx=-dy/len,ny=dx/len;
+  const cx2=mx+nx*bend,cy2=my+ny*bend;
+  ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.lineCap='round';ctx.globalAlpha=pop;
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.quadraticCurveTo(cx2,cy2,x2,y2);ctx.stroke();
+  arrowHead(x2,y2,Math.atan2(y2-cy2,x2-cx2),8*K,col,pop);ctx.globalAlpha=1}
+function heart(x,y,s,a){ctx.save();ctx.translate(x,y);ctx.scale(s/8,s/8);ctx.globalAlpha=a;
+  ctx.fillStyle='#ec4899';ctx.beginPath();ctx.moveTo(0,4);ctx.bezierCurveTo(-6,-2,-3,-8,0,-3);
+  ctx.bezierCurveTo(3,-8,6,-2,0,4);ctx.fill();ctx.restore()}
+function hearts(x,y,st,t0,n){for(let i=0;i<n;i++){const u=st-t0-i*0.5;if(u<0||u>2.4)continue;
+  heart(x+Math.sin(u*5+i*2)*12*K,y-14*K-u*50*K,(1.6+(i%2)*0.8)*K*2.2,clamp(1-u/2.4,0,1)*0.9)}}
+function popWrap(x,y,p,fn){if(p<=0)return;ctx.save();ctx.translate(x,y);ctx.scale(p,p);ctx.translate(-x,-y);fn();ctx.restore()}
+function pointer(x1,y1,x2,y2,st,t0){const u=stag(st,t0,0.4);if(u<=0)return;
+  ctx.globalAlpha=u;ctx.strokeStyle='#94a3b8';ctx.lineWidth=1.6;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#94a3b8';ctx.beginPath();ctx.arc(x2,y2,3.5*K,0,TAU);ctx.fill();ctx.globalAlpha=1}
+function wordChips(cx,cy,word,st,t0,active,doneN,sc){sc=sc||1;const n=word.length,gap=54*K*sc;const x0=cx-(n-1)*gap/2;
+  word.forEach((L,i)=>{const p=eob(stag(st,t0+i*0.3,0.4));if(p<=0)return;
+    const x=x0+i*gap,col=(L==='B')?BLUE:RED,act=(i===active);
+    const sc2=act?(1+0.1*Math.sin(gtNow*6)):1;
+    ctx.save();ctx.translate(x,cy);ctx.scale(sc*sc2*p,sc*sc2*p);
+    ctx.beginPath();ctx.arc(0,0,16*K,0,TAU);ctx.fillStyle=col;ctx.fill();
+    ctx.strokeStyle=act?'#fff':'rgba(15,23,42,.35)';ctx.lineWidth=act?3:1.5;ctx.stroke();
+    if(act){ctx.globalAlpha=0.5+0.3*Math.sin(gtNow*7);ctx.beginPath();ctx.arc(0,0,23*K,0,TAU);
+      ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();ctx.globalAlpha=1}
+    fnt(15,true);ctx.fillStyle='#fff';txt(L==='B'?'С':'Ч',0,5.5*K);
+    if(i<doneN){fnt(13,true);ctx.fillStyle='#22c55e';txt('✓',13*K,-13*K)}
+    ctx.restore()})}
+function waves(x,y,st,t0,col){if(st<t0)return;const u0=st-t0;
+  for(let k=0;k<3;k++){const u=(u0*1.1-k*0.33)%1;if(u<0)continue;
+    ctx.globalAlpha=(1-u)*0.8;ctx.strokeStyle=col;ctx.lineWidth=2*K;
+    ctx.beginPath();ctx.arc(x,y,(6+u*20)*K,-0.9,0.9);ctx.stroke()}ctx.globalAlpha=1}
+function drawWalkerDot(x,y,col){ctx.beginPath();ctx.arc(x,y-10*K,9*K,0,TAU);ctx.fillStyle=col;ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle='#1f2937';ctx.beginPath();ctx.arc(x-3*K,y-12*K,1.4*K,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.arc(x+3*K,y-12*K,1.4*K,0,TAU);ctx.fill()}
+
+/* ================= ПРОБЛЕМА ЗУПИНКИ ================= */
+const GREEN='#16a34a',AMB='#b45309',INK='#2c2416',PINK='#ec4899',PURPLE='#7c3aed';
+function box(x,y,w,h,s,col,a){if(a<=0)return;ctx.globalAlpha=a;ctx.fillStyle='rgba(255,255,255,.95)';rr(x-w/2,y-h/2,w,h,10*K);ctx.fill();
+  ctx.strokeStyle=col;ctx.lineWidth=2.5*K;ctx.stroke();fnt(17,true);ctx.fillStyle=col;txt(s,x,y+6*K);ctx.globalAlpha=1}
+function selfLoop(cx,cy,r,col,p){if(p<=0)return;const a0=0.7,a1=a0+1.6*Math.PI*p;ctx.strokeStyle=col;ctx.lineWidth=3.5*K;ctx.lineCap='round';
+  ctx.beginPath();ctx.arc(cx,cy,r,a0,a1);ctx.stroke();arrowHead(cx+Math.cos(a1)*r,cy+Math.sin(a1)*r,a1+Math.PI/2,7*K,col,1)}
+function mkLog(init,rules,maxN){const tape={},log=[];init.forEach((c,i)=>tape[i]=c);let h=0,q='q0';
+  const snap=()=>{const t=[];for(let i=-1;i<12;i++)t.push(tape[i]||'_');log.push({t,h,q})};snap();
+  for(let n=0;n<maxN&&q!=='H';n++){const r=rules[q+','+(tape[h]||'_')];if(!r)break;
+    tape[h]=r[0];h+=r[1]==='R'?1:r[1]==='L'?-1:0;q=r[2];snap()}return log}
+const LOG1=mkLog(['1','1','+','1','1','1'],{'q0,1':['1','R','q0'],'q0,+':['1','R','q1'],'q1,1':['1','R','q1'],'q1,_':['_','L','q2'],'q2,1':['_','L','H']},30);
+const LOG2=(()=>{const L=[];let t=['0','0','1','1'];
+  const push=(h,q)=>L.push({t:['_',...t,'_','_','_','_','_','_','_','_'],h,q});push(0,'старт');
+  for(let k=0;k<4;k++){const c=t[0];push(0,'беру '+c);for(let i=0;i<3;i++){t[i]=t[i+1];push(i,'зсув')}
+    t[3]=c;push(3,'пишу '+c);push(0,'0101? ні')}return L})();
+function drawTM(log,idx,x,y,cw){const i=Math.floor(clamp(idx,0,log.length-1)),f=eio(clamp(idx-i,0,1)),a=log[i],b=log[Math.min(i+1,log.length-1)];
+  for(let c=0;c<13;c++){const cx=x+c*cw,ch=f<0.5?a.t[c]:b.t[c];ctx.fillStyle='#fff';ctx.strokeStyle='#8b7d6b';ctx.lineWidth=2*K;
+    rr(cx,y,cw-4*K,cw,6*K);ctx.fill();ctx.stroke();fnt(24,true);ctx.fillStyle=ch==='_'?'#cbbfae':INK;txt(ch==='_'?'·':ch,cx+(cw-4*K)/2,y+cw*0.66)}
+  const hx=x+lerp(a.h+1,b.h+1,f)*cw+(cw-4*K)/2;ctx.fillStyle=RED;ctx.beginPath();ctx.moveTo(hx,y-2*K);ctx.lineTo(hx-14*K,y-28*K);ctx.lineTo(hx+14*K,y-28*K);ctx.closePath();ctx.fill();
+  fnt(15,true);ctx.fillStyle=RED;txt('стан: '+(f<0.5?a.q:b.q),hx,y-36*K)}
+function t0(w,h,st,gt){sceneTitle('Машина Тьюринга',st);const cw=W*0.07,x=W*0.045,y=H*0.3;drawTM(LOG1,0,x,y,cw);
+  chip('стрічка: нескінченна, з клітинок',W*0.27,y+cw+34*K,eo(stag(st,3,0.4)),BLUE);chip('головка читає, пише й рухається',W*0.72,y-74*K,eo(stag(st,5,0.4)),RED);
+  const p=eo(stag(st,8,0.6));
+  popWrap(W/2,H*0.7,p,()=>{card(W*0.14,H*0.52,W*0.72,H*0.34);fnt(17,true);ctx.fillStyle=INK;txt('Таблиця правил: що робити в кожному стані',W/2,H*0.52+30*K);
+    ['q0 · бачу 1 → пишу 1 · вправо · лишаюсь у q0','q0 · бачу + → пишу 1 · вправо · стан q1','q1 · бачу порожньо → вліво · стан q2','q2 · бачу 1 → стираю · вліво · СТОП'].forEach((l,i)=>{
+      const s=typeText(l,st,9+i*1.8);if(s){fnt(16);ctx.fillStyle='#4a3f2e';txt(s,W/2,H*0.52+66*K+i*30*K)}})})}
+function t1(w,h,st,gt){sceneTitle('Машина A: додає 2 + 3',st);const cw=W*0.07,x=W*0.045,y=H*0.34,idx=clamp((st-2)/0.9,0,LOG1.length-1);
+  drawTM(LOG1,idx,x,y,cw);chip('кроків: '+Math.floor(idx+0.001),W*0.2,H*0.62,eo(stag(st,2,0.4)),'#475569');
+  chip('1 1 + 1 1 1   →   1 1 1 1 1',W*0.62,H*0.62,eo(stag(st,1,0.5)),BLUE);
+  stamp('СТОП ✓ відповідь: 5',W/2,H*0.8,32,GREEN,st,2+0.9*(LOG1.length-1)+0.2,-0.04)}
+function t2(w,h,st,gt){sceneTitle('Машина B: шукає 0101',st);const cw=W*0.07,x=W*0.045,y=H*0.34,raw=Math.max(0,(st-2)/0.55);
+  const idx=raw<1?raw:1+((raw-1)%24);drawTM(LOG2,idx,x,y,cw);
+  chip('мета: 0101',W*0.18,H*0.62,eo(stag(st,1,0.4)),GREEN);chip('повних обертів: '+Math.floor(raw/6),W*0.45,H*0.62,eo(stag(st,2,0.4)),'#475569');
+  chip('два 00 поруч — зсув цього не змінює',W*0.75,H*0.62,eo(stag(st,11,0.5)),RED);
+  stamp('НІКОЛИ НЕ ЗУПИНИТЬСЯ  ∞',W/2,H*0.8,30,RED,st,18,-0.04)}
+function bulb(x,y,col,on,label){ctx.globalAlpha=on?1:0.25;ctx.fillStyle=col;ctx.beginPath();ctx.arc(x,y,16*K,0,TAU);ctx.fill();
+  if(on){ctx.globalAlpha=.25;ctx.beginPath();ctx.arc(x,y,26*K,0,TAU);ctx.fill()}ctx.globalAlpha=1;fnt(17,true);ctx.fillStyle=col;txt(label,x+34*K,y+6*K,'left')}
+function pcard(x,y,s,col,a){if(a<=0)return;ctx.globalAlpha=a;ctx.fillStyle='#fff';rr(x-70*K,y-26*K,140*K,52*K,8*K);ctx.fill();ctx.strokeStyle=col;ctx.lineWidth=2.5*K;ctx.stroke();
+  fnt(15,true);ctx.fillStyle=col;txt(s,x,y+5*K);ctx.globalAlpha=1}
+function t3(w,h,st,gt){sceneTitle('Аналізатор зупинки H',st);const bx=W*0.5,by=H*0.45;
+  ctx.fillStyle='#1e293b';rr(bx-W*0.08,by-H*0.17,W*0.16,H*0.34,16*K);ctx.fill();fnt(54,true);ctx.fillStyle='#e2e8f0';txt('H',bx,by+10*K);fnt(12);ctx.fillStyle='#94a3b8';txt('аналізатор',bx,by+H*0.12);
+  const ax=lerp(W*0.1,bx-W*0.15,eio(stag(st,1,1.5))),bxp=lerp(W*0.1,bx-W*0.15,eio(stag(st,7,1.5)));
+  pcard(ax,by-H*0.08,'A: додає 2+3',BLUE,st<5?1:Math.max(0,1-(st-5)));pcard(bxp,by+H*0.08,'B: шукає 0101',PURPLE,st<7?0:(st<11?1:Math.max(0,1-(st-11))));
+  if((st>2.5&&st<4.2)||(st>8.5&&st<10.2)){fnt(14,true);ctx.fillStyle='#94a3b8';txt('аналіз…',bx,by-H*0.1)}
+  bulb(W*0.76,H*0.34,GREEN,st>4.2&&st<10.2,'зупиниться');bulb(W*0.76,H*0.56,RED,st>=10.2,'ніколи');
+  chip('H відповідає завжди і за скінченний час',W/2,H*0.8,eo(stag(st,12,0.5)),'#475569');
+  stamp('Чи може існувати такий H для ВСІХ програм?',W/2,H*0.9,24,AMB,st,14.5,-0.03)}
+function t4(w,h,st,gt){sceneTitle('Хитра програма D',st);const cx=W/2,ar=(x1,y1,x2,y2,c,t0)=>curveArrow(x1,y1,x2,y2,0,c,eo(stag(st,t0,0.4)),3*K);
+  box(cx,H*0.2,W*0.3,H*0.08,'D(P): отримала програму P',BLUE,eo(stag(st,1,0.5)));ar(cx,H*0.24,cx,H*0.32,'#64748b',2.5);
+  box(cx,H*0.37,W*0.36,H*0.09,'Питаємо H: чи зупиниться P(P)?',PURPLE,eo(stag(st,3,0.5)));
+  ar(cx-W*0.12,H*0.415,W*0.25,H*0.56,GREEN,6);chip('«зупиниться»',W*0.27,H*0.49,eo(stag(st,6,0.4)),GREEN);
+  box(W*0.25,H*0.62,W*0.3,H*0.08,'зациклитись назавжди ∞',RED,eo(stag(st,7,0.5)));
+  ar(cx+W*0.12,H*0.415,W*0.75,H*0.56,RED,10);chip('«ніколи»',W*0.73,H*0.49,eo(stag(st,10,0.4)),RED);
+  box(W*0.75,H*0.62,W*0.3,H*0.08,'негайно зупинитись',GREEN,eo(stag(st,11,0.5)));
+  chip('D завжди робить ПРОТИЛЕЖНЕ до прогнозу H',W/2,H*0.82,eo(stag(st,14,0.5)),AMB)}
+function t5(w,h,st,gt){sceneTitle('Запускаємо D на самій собі',st);const cx=W/2,cy=H*0.22,ar=(x1,y1,x2,y2,c,t0)=>curveArrow(x1,y1,x2,y2,0,c,eo(stag(st,t0,0.4)),3*K);
+  box(cx,cy,W*0.16,H*0.09,'D(D)',BLUE,eo(stag(st,1,0.5)));selfLoop(cx+W*0.115,cy,H*0.045,BLUE,eo(stag(st,2,0.8)));
+  [[0.27,'H(D,D) = «зупиниться»',GREEN,'тоді D зациклюється',RED,'✕ але H казав: зупиниться',5],[0.73,'H(D,D) = «ніколи»',RED,'тоді D зупиняється',GREEN,'✕ але H казав: ніколи',11]].forEach(c=>{
+    box(W*c[0],H*0.42,W*0.33,H*0.08,c[1],c[2],eo(stag(st,c[6],0.5)));ar(W*c[0],H*0.46,W*c[0],H*0.54,'#64748b',c[6]+1.2);
+    box(W*c[0],H*0.6,W*0.33,H*0.08,c[3],c[4],eo(stag(st,c[6]+1.5,0.5)));ar(W*c[0],H*0.64,W*c[0],H*0.72,'#64748b',c[6]+2.7);
+    box(W*c[0],H*0.77,W*0.33,H*0.08,c[5],AMB,eo(stag(st,c[6]+3,0.5)))});
+  stamp('Суперечність ⇒ H не існує',W/2,H*0.92,26,RED,st,18,-0.04)}
+function t6(w,h,st,gt){sceneTitle('Теорема Тьюринга (1936)',st);
+  popWrap(W/2,H*0.28,eo(stag(st,0.6,0.6)),()=>{card(W*0.06,H*0.14,W*0.88,H*0.3);fnt(20,true);ctx.fillStyle=INK;
+    ['Не існує алгоритму H(P, x), який для будь-якої програми P','і будь-якого входу x ЗАВЖДИ завершується і правильно відповідає:','зупиняється P на x чи ні.'].forEach((l,i)=>txt(l,W/2,H*0.14+52*K+i*36*K))});
+  [['Проблема зупинки алгоритмічно нерозв\'язна',BLUE,6],['«Зупинилась» можна підтвердити запуском; «ніколи» — ні',GREEN,10],
+   ['Теорема Райса: будь-яка нетривіальна властивість поведінки програм — теж нерозв\'язна',PURPLE,14],['Ідеального антивіруса чи шукача помилок не існує',RED,18]].forEach((c,i)=>chip(c[0],W/2,H*0.55+i*H*0.1,eo(stag(st,c[2],0.5)),c[1]))}
+function t7(w,h,st,gt){sceneTitle('Історія: від Гільберта до Тьюринга',st);const y0=H*0.48,x0=W*0.18,x1=W*0.84;
+  ctx.strokeStyle='#8b7d6b';ctx.lineWidth=4*K;ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(lerp(x0,x1,eo(stag(st,0.5,1.5))),y0);ctx.stroke();
+  [[1928,'1928 · Гільберт: є алгоритм для всього?',BLUE],[1931,'1931 · Гедель: теореми про неповноту',PINK],[1936,'1936 · Тьюринг і Черч: алгоритму немає',RED],
+   [1940,'1939–45 · Блечлі-парк: злам Enigma',GREEN],[1950,'1950 · Тест Тьюринга',PURPLE]].forEach((e,i)=>{
+    const x=lerp(x0,x1,(e[0]-1928)/22),a=eo(stag(st,2+i*3,0.5)),up=i%2===0,yy=up?H*0.28:H*0.68;if(a<=0)return;
+    ctx.globalAlpha=a;ctx.strokeStyle=e[2];ctx.lineWidth=2*K;ctx.beginPath();ctx.moveTo(x,y0);ctx.lineTo(x,yy+(up?14:-14)*K);ctx.stroke();
+    ctx.fillStyle=e[2];ctx.beginPath();ctx.arc(x,y0,10*K,0,TAU);ctx.fill();ctx.globalAlpha=1;chip(e[1],x,yy,a,e[2])})}
+function t8(w,h,st,gt){sceneTitle('Брехун: давній парадокс',st);
+  const a=eo(stag(st,0.4,0.5));
+  if(a>0){ctx.globalAlpha=a;fntE(60);txt('🏝️',W*0.1,H*0.3);fntE(52);txt('🧔',W*0.1,H*0.48);fnt(14,true);ctx.fillStyle=INK;txt('Епіменід із Криту',W*0.1,H*0.56);ctx.globalAlpha=1}
+  popWrap(W*0.33,H*0.3,eo(stag(st,2,0.5)),()=>{card(W*0.18,H*0.2,W*0.3,H*0.17);fnt(19,true);ctx.fillStyle=INK;txt('«Усі критяни — брехуни»',W*0.33,H*0.29);
+    fnt(14);ctx.fillStyle='#6b5d4f';txt('(а сам він — критянин)',W*0.33,H*0.335)});
+  chip('якщо це правда, то й він бреше…',W*0.33,H*0.46,eo(stag(st,5,0.5)),AMB);
+  popWrap(W*0.75,H*0.3,eo(stag(st,8,0.6)),()=>{card(W*0.55,H*0.16,W*0.4,H*0.32);selfLoop(W*0.89,H*0.25,18*K,RED,1);
+    fnt(24,true);ctx.fillStyle=INK;txt('«Це твердження хибне»',W*0.74,H*0.26);
+    const tv=Math.floor(gtNow*1.1)%2===0;fntE(40);txt(tv?'✅':'❌',W*0.68,H*0.4);fnt(19,true);ctx.fillStyle=tv?GREEN:RED;txt(tv?'істинне':'хибне',W*0.79,H*0.4)});
+  chip('істинне ⇒ воно хибне',W*0.75,H*0.56,eo(stag(st,11.5,0.5)),RED);
+  chip('хибне ⇒ воно істинне',W*0.75,H*0.64,eo(stag(st,14,0.5)),GREEN);
+  stamp('Перший дзвіночок до теореми Геделя',W/2,H*0.86,26,AMB,st,17,-0.03)}
+function t9(w,h,st,gt){sceneTitle('Парадокс голяра (Рассел)',st);
+  popWrap(W*0.18,H*0.34,eo(stag(st,0.5,0.5)),()=>{card(W*0.03,H*0.16,W*0.3,H*0.36);fntE(54);txt('💈',W*0.18,H*0.28);
+    fnt(17,true);ctx.fillStyle=INK;['Голяр голить усіх,','хто не голиться сам,','і лише їх'].forEach((l,i)=>txt(l,W*0.18,H*0.37+i*26*K))});
+  [[W*0.4,'голяться самі','🧔'],[W*0.69,'не голяться самі → до голяра','🙂']].forEach((g,i)=>{const p=eo(stag(st,3+i*2,0.5));
+    popWrap(g[0]+W*0.13,H*0.34,p,()=>{card(g[0],H*0.16,W*0.26,H*0.36);fnt(15,true);ctx.fillStyle=i?RED:GREEN;txt(g[1],g[0]+W*0.13,H*0.2+8*K);
+      [0.07,0.19].forEach(f=>{fntE(44);txt(g[2],g[0]+W*f+W*0.0,H*0.36);if(!i)selfLoop(g[0]+W*f,H*0.34,26*K,GREEN,1)})})});
+  const q=eo(stag(st,9,0.5));
+  if(q>0){ctx.globalAlpha=q;fntE(46);txt('💈',W*0.36,H*0.66);fntE(40);txt(Math.floor(gtNow*2)%2?'❓':'🤔',W*0.43,H*0.66);ctx.globalAlpha=1;
+    chip('А сам голяр — до якої групи?',W*0.64,H*0.65,q,AMB)}
+  chip('голить себе ⇒ він серед тих, кого голити не можна',W/2,H*0.76,eo(stag(st,13,0.5)),RED);
+  chip('не голить себе ⇒ він серед тих, кого мусить голити',W/2,H*0.83,eo(stag(st,16.5,0.5)),RED);
+  stamp('Рассел, 1901: R = {x : x ∉ x}',W/2,H*0.92,24,BLUE,st,20,-0.03)}
+function t10(w,h,st,gt){sceneTitle('Самопосилання',st);
+  [['Брехун · давнина',AMB,'«Це твердження хибне»'],['Рассел · 1901',BLUE,'R = {x : x ∉ x}   R ∈ R ?'],['Гедель · 1931',PINK,'«Це твердження недоказне»'],['Тьюринг · 1936',RED,'D: «роби протилежне до H(D, D)»']].forEach((c,i)=>{
+    const x=W*(0.04+(i%2)*0.48),y=H*(0.15+Math.floor(i/2)*0.33),cw=W*0.44,ch=H*0.29,t0=0.6+i*2.4,p=eo(stag(st,t0,0.5));
+    popWrap(x+cw/2,y+ch/2,p,()=>{card(x,y,cw,ch);selfLoop(x+50*K,y+ch*0.5,24*K,c[1],eo(stag(st,t0+0.5,1)));
+      fnt(22,true);ctx.fillStyle=c[1];txt(c[0],x+cw*0.6,y+ch*0.38);fnt(16);ctx.fillStyle=INK;txt(c[2],x+cw*0.6,y+ch*0.64)})});
+  chip('Тьюринг виклав ідею Геделя мовою програм',W/2,H*0.84,eo(stag(st,11,0.5)),RED);
+  stamp('самопосилання + заперечення = межа можливого',W/2,H*0.93,24,AMB,st,14.5,-0.03)}
+function t11(w,h,st,gt){sceneTitle('Загадка про слова',st);
+  chip('слово самоописове, якщо саме має властивість, яку називає',W/2,H*0.13,eo(stag(st,0.4,0.5)),'#475569');
+  [[W*0.03,'самоописові',GREEN,['багатоскладове','іменник','українське','слово']],[W*0.57,'не самоописові',RED,['односкладове','прикметник','німецьке','англійське']]].forEach((c,ci)=>{
+    popWrap(c[0]+W*0.2,H*0.35,eo(stag(st,1+ci*0.6,0.5)),()=>{card(c[0],H*0.2,W*0.4,H*0.36);fnt(21,true);ctx.fillStyle=c[2];txt(c[1],c[0]+W*0.2,H*0.26);
+      c[3].forEach((wd,i)=>{const a=eo(stag(st,2.5+ci*5+i*0.8,0.4));if(a>0){ctx.globalAlpha=a;fnt(20);ctx.fillStyle=INK;txt('«'+wd+'»',c[0]+W*0.2,H*0.34+i*H*0.055);ctx.globalAlpha=1}})})});
+  const f=Math.floor(gtNow*1.2)%2===0,wa=eo(stag(st,10,0.6));
+  if(wa>0){fntE(54);ctx.globalAlpha=wa;txt('❓',W/2,H*0.4);ctx.globalAlpha=1;
+    popWrap(W/2,H*0.72,wa,()=>{fnt(34,true);ctx.fillStyle=INK;txt('«несамоописове»',W/2,H*0.72)});
+    curveArrow(W/2-70*K,H*0.68,W*0.25,H*0.58,0,GREEN,f?wa:0.2*wa,4*K);curveArrow(W/2+70*K,H*0.68,W*0.75,H*0.58,0,RED,f?0.2*wa:wa,4*K)}
+  stamp('До якої групи належить «несамоописове»?',W/2,H*0.89,25,AMB,st,13,-0.03)}
+const scenes=[
+ {tick:'Машина',dur:16,draw:t0,text:"Чи може комп'ютер передбачити, чи завершиться програма? Почнемо з найпростішого комп'ютера, машини Тьюринга. У неї є нескінченна стрічка з клітинок, головка, яка читає й пише, і таблиця правил. Більше нічого."},
+ {tick:'Додавання',dur:14,draw:t1,text:"Ось машина A. Вона додає два плюс три в унарній системі. Читає клітинку за клітинкою, замінює плюс одиницею, стирає зайву одиницю і зупиняється. На стрічці п'ять одиниць. Вісім кроків, і все."},
+ {tick:'Вічний цикл',dur:24,draw:t2,text:"Тепер інша машина. Вона циклічно зсуває чотири біти й чекає, коли вийде нуль, один, нуль, один. Але в початковому слові два нулі стоять поруч. Зсув цього не змінює: нулі так і лишаться сусідами. Тож машина крутиться вічно. Нам це видно. А чи побачить комп'ютер?"},
+ {tick:'Аналізатор',dur:18,draw:t3,text:"Уявімо аналізатор H. Йому дають програму й вхід, а він за скінченний час відповідає: зупиниться чи ніколи. Для машини A він запалює зелену лампу. Для машини B червону. Здається, потрібна лише хороша інженерія. Але чи можливий такий аналізатор для всіх програм?"},
+ {tick:'Хитрий D',dur:20,draw:t4,text:"Припустимо, аналізатор існує. Збудуємо хитру програму D. Вона отримує програму P і питає аналізатор: чи зупиниться P, якщо запустити її на самій собі? Якщо аналізатор каже, що зупиниться, D зациклюється. Якщо каже, що ніколи, D негайно зупиняється. D завжди робить протилежне до прогнозу."},
+ {tick:'D на собі',dur:20,draw:t5,text:"Запустимо D на самій собі. Якщо аналізатор скаже, що D зупиниться, то D зациклиться. Якщо скаже, що D не зупиниться, то D зупиниться. В обох випадках аналізатор помиляється. Отже, припущення хибне: такого аналізатора не існує."},
+ {tick:'Теорема',dur:24,draw:t6,text:"Ось сама теорема. Не існує алгоритму, який для будь-якої програми й будь-якого входу завжди завершується і правильно відповідає, чи зупиниться програма. Тобто проблема зупинки алгоритмічно нерозв'язна. Зупинку можна підтвердити, просто запустивши програму. Неможливо лише гарантувати відповідь: ніколи. Звідси теорема Райса: жодну нетривіальну властивість поведінки програм не можна перевірити ідеально. Не існує ідеального антивіруса чи шукача помилок."},
+ {tick:'Історія',dur:22,draw:t7,text:"Це не просто головоломка. У тисяча дев'ятсот двадцять восьмому році Гільберт запитав: чи існує алгоритм, що вирішує будь-яке твердження логіки? У тисяча дев'ятсот тридцять першому Гедель показав межі формальних систем: у достатньо багатій теорії завжди є істинні твердження, яких не можна довести. А в тисяча дев'ятсот тридцять шостому Алан Тьюринг відповів Гільберту: ні. До того ж висновку незалежно дійшов Алонзо Черч. Потім Тьюринг допомагав зламувати Enigma у Блечлі-парку."},
+ {tick:'Брехун',dur:24,draw:t8,text:"Самопосилання лякало людей задовго до Тьюринга. Епіменід, мешканець Криту, казав: усі критяни — брехуни. А сам був критянином. Це ще можна пояснити. Та ось чистіша версія: це твердження хибне. Якщо воно істинне, то воно хибне. Якщо хибне, то істинне. Це перший дзвіночок до теореми Геделя. Замініть слово «істинне» на «доказне», і така фраза знайде дорогу в математику."},
+ {tick:'Голяр',dur:28,draw:t9,text:"Парадокс Рассела простіше розповісти про голяра. В одному селі голяр голить усіх, хто не голиться сам, і лише їх. Одні селяни голяться самі, інші ходять до голяра. А як бути з самим голярем? Якщо він голить себе, то він серед тих, кого голити не можна. Якщо не голить, то серед тих, кого мусить голити. Суперечність. Для множин це виглядає так: множина всіх множин, що не містять себе. Чи містить вона себе? Так Бертран Рассел вразив логіку в тисяча дев'ятсот першому році."},
+ {tick:'Самопосилання',dur:20,draw:t10,text:"Ось усе разом. Брехун: це твердження хибне. Рассел: множина тих, що не містять себе. Гедель: це твердження недоказне. А Тьюринг просто виклав ту саму ідею мовою інформатики: програма, яка робить протилежне до прогнозу про себе. Скрізь одне й те саме: самопосилання плюс заперечення."},
+ {tick:'Загадка',dur:24,draw:t11,text:"І наостанок — загадка. Назвемо слово самоописовим, якщо воно саме має ту властивість, яку називає. Багатоскладове — справді багатоскладове. Іменник — іменник. Українське — українське. Слово — слово. А односкладове, прикметник і німецьке — не самоописові. Тепер питання: до якої групи належить слово несамоописове? Дякую за увагу!"}];
+const cum=[];let acc0=0;scenes.forEach(s=>{cum.push(acc0);acc0+=s.dur});
+const TOTAL=acc0;
+
+/* ================= TTS (гібрид) ================= */
+const synth=window.speechSynthesis;
+let engine='google',userPicked=false,gAudio=null,gToken=0;
+let voiceScene=-1,ttsDone=true,ttsActive=false;
+function detect(){if(userPicked)return;const vs=(synth&&synth.getVoices?synth.getVoices():[])||[];
+  const uk=vs.some(v=>v.lang&&v.lang.toLowerCase().startsWith('uk'));
+  updateEngineUI()}
+if(synth){detect();if(synth.onvoiceschanged!==undefined)synth.onvoiceschanged=detect}
+function updateEngineUI(){engineSeg.querySelectorAll('button').forEach(b=>
+  b.classList.toggle('on',b.dataset.e===engine))}
+function splitChunks(text,maxLen){const ss=text.match(/[^.!?]+[.!?]+/g)||[text];
+  const out=[];let cur='';ss.forEach(s=>{if((cur+s).length>maxLen&&cur){out.push(cur.trim());cur=s}else cur+=s});
+  if(cur)out.push(cur.trim());return out}
+function speak(text,sceneIdx){voiceScene=sceneIdx;ttsDone=false;ttsActive=true;
+  const done=()=>{if(voiceScene===sceneIdx){ttsDone=true;ttsActive=false}};
+  if(engine==='none'){ttsDone=true;ttsActive=false;return}
+  if(engine==='webspeech'&&synth){try{synth.cancel()}catch(e){}
+    const u=new SpeechSynthesisUtterance(text);u.lang='uk-UA';
+    u.rate=clamp(0.95*speed,0.5,2);u.pitch=1;
+    u.onend=done;u.onerror=done;synth.speak(u);if(synth.paused)synth.resume()}
+  else if(engine==='hf'){const myTok=++gToken;hfWait=true;
+    (async()=>{
+      if(!await hfEnsure()){if(myTok===gToken)hfFallback(text,sceneIdx);return}
+      const ch=hfSplit(text,110),ps=ch.map(c=>hfSynth(c));ps.forEach(p=>p.catch(()=>{}));{const nx=scenes[sceneIdx+1];if(nx)hfSynth(hfSplit(nx.text,110)[0]).catch(()=>{})}
+      for(let i=0;i<ch.length;i++){let url;
+        if(i>0)hfWait=true;try{url=await ps[i]}catch(e){console.error('UA нейро:',e);if(myTok===gToken)hfFallback(text,sceneIdx);return}
+        if(myTok!==gToken)return;
+        hfWait=false;
+        await new Promise(res=>{const a=new Audio(url);a.playbackRate=speed;gAudio=a;
+          const txt=ch[i];a.addEventListener('loadedmetadata',()=>console.log('[UA нейро]',txt.length,'знаків →',a.duration.toFixed(1),'с:',txt));
+          a.onended=res;a.onerror=res;
+          const pl=a.play();if(pl)pl.catch(e=>{if(!(e&&e.name==='AbortError'))res()});
+          if(isPaused)a.pause()});
+        if(myTok!==gToken)return}
+      done()})().catch(e=>{console.error(e);hfWait=false;done()})}
+  else{const myTok=++gToken,ch=splitChunks(text,180);let i=0;
+    (function next(){if(myTok!==gToken)return;
+      if(i>=ch.length){done();return}
+      const a=new Audio('https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=uk&q='+encodeURIComponent(ch[i]));
+      gAudio=a;a.onended=()=>{i++;next()};a.onerror=()=>{i++;next()};
+      a.play().catch(()=>{i++;next()})})()}}
+/* ---- UA нейро: демо robinhad/ukrainian-tts на Hugging Face (відкат -> Google TTS) ---- */
+const HF_SPACE='robinhad/ukrainian-tts',HF_HOST='https://robinhad-ukrainian-tts.hf.space',
+  HF_CLIENT='https://cdn.jsdelivr.net/npm/@gradio/client@2.6.0/dist/index.min.js';
+const hfVoiceSel=document.getElementById('hfVoice');
+let hfApp=null,hfConn=null,hfMsg='',hfWait=false,hfQ=Promise.resolve(),hfApi='/predict';const hfCache=new Map();
+const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout '+ms)),ms))]);
+function hfEnsure(){if(hfConn)return hfConn;
+  hfConn=(async()=>{hfMsg='⏳';const m=await import(HF_CLIENT);
+    hfApp=await withTimeout(m.Client.connect(HF_SPACE),60000);hfMsg='';return true})()
+    .catch(e=>{console.error('UA нейро:',e);hfMsg='⚠ UA нейро недоступне → Google';hfConn=null;return false});
+  return hfConn}
+function hfSynth(t){const v=hfVoiceSel.value,k=v+'|'+t;if(hfCache.has(k))return hfCache.get(k);
+  hfQ.catch(()=>{});
+  const pr=(hfQ=hfQ.catch(()=>{}).then(async()=>{let last;
+    for(const n of [hfApi,'/tts']){const t0=Date.now();
+      try{const r=await withTimeout(hfApp.predict(n,[t,v]),90000);
+        const f=r&&r.data&&r.data[0];const u=f&&(f.url||(f.path&&HF_HOST+'/file='+f.path));
+        if(!u)throw new Error('немає аудіо у відповіді');hfApi=n;return u}
+      catch(e){last=e;if(Date.now()-t0>4000)break}}
+    throw last}));
+  hfCache.set(k,pr);pr.catch(()=>hfCache.delete(k));return pr}
+/* Ділимо лише за межами речень (. ! ? …): кома чи тире всередині речення не повинні ставати «крапкою».
+   Короткі сусідні речення склеюємо до max знаків. Дуже довге речення (>220) ділимо лише за ; або : */
+function hfSplit(text,max){
+  const ss=(text.match(/[^.!?…]+[.!?…]+["»”)]*|[^.!?…]+$/g)||[text]).map(x=>x.trim()).filter(Boolean);
+  const out=[];
+  ss.forEach(x=>{if(x.length<=220){out.push(x);return}
+    let cur='';x.split(/(?<=[;:])\s+/).forEach(q=>{
+      if(cur&&(cur+' '+q).length>max){out.push(cur);cur=q}else cur=cur?cur+' '+q:q});
+    if(cur)out.push(cur)});
+  const m=[];out.forEach(q=>{if(m.length&&(m[m.length-1]+' '+q).length<=max)m[m.length-1]+=' '+q;else m.push(q)});
+  return m.length?m:[text]}
+function hfFallback(text,idx){hfWait=false;engine='google';updateEngineUI();
+  if(!hfMsg)hfMsg='⚠ UA нейро недоступне → Google';speak(text,idx)}
+hfVoiceSel.onchange=()=>{if(engine==='hf'&&isPlaying&&!isPaused){stopSpeaking();speakScene()}};
+
+function stopSpeaking(){hfWait=false;gToken++;if(gAudio){gAudio.pause();gAudio=null}
+  if(synth){try{synth.cancel()}catch(e){}}
+  ttsActive=false;ttsDone=true}
+
+/* ================= ПЛЕЄР ================= */
+let currentScene=0,sceneTime=0,globalTime=0,isPlaying=false,isPaused=false,
+    hasStarted=false,finished=false,holdTimer=0,speed=1;
+function setPlayIcon(playing){icoPlay.style.display=playing?'none':'';
+  icoPause.style.display=playing?'':'none'}
+function setSubtitle(sc){if(chkSubs.checked){subtitleEl.innerHTML='<b>'+sc.tick+'</b> — '+sc.text;
+  subtitleEl.style.opacity='1'}else subtitleEl.style.opacity='0'}
+function startScene(i){currentScene=clamp(i,0,scenes.length-1);sceneTime=0;holdTimer=0;
+  const sc=scenes[currentScene];setSubtitle(sc);stopSpeaking();
+  if(isPlaying)speak(sc.text,currentScene);updateSceneButtons()}
+function speakScene(){const sc=scenes[currentScene];setSubtitle(sc);speak(sc.text,currentScene)}
+function startShow(){hasStarted=true;finished=false;isPlaying=true;isPaused=false;
+  setPlayIcon(true);startScene(0)}
+function doPause(){isPaused=true;setPlayIcon(false);
+  if(engine==='webspeech'&&synth)synth.pause();
+  if((engine==='google'||engine==='hf')&&gAudio)gAudio.pause()}
+function doResume(){isPaused=false;setPlayIcon(true);
+  if(engine==='webspeech'&&synth)synth.resume();
+  if((engine==='google'||engine==='hf')&&gAudio)gAudio.play()}
+function togglePlay(){if(!hasStarted){startShow();return}
+  if(!isPlaying){finished=false;isPlaying=true;isPaused=false;setPlayIcon(true);speakScene();return}
+  isPaused?doResume():doPause()}
+function stopShow(){isPlaying=false;isPaused=false;finished=false;setPlayIcon(false);
+  stopSpeaking();currentScene=0;sceneTime=0;holdTimer=0;
+  subtitleEl.style.opacity='0';updateSceneButtons()}
+function seekScene(i){i=clamp(i,0,scenes.length-1);stopSpeaking();finished=false;
+  currentScene=i;sceneTime=0;holdTimer=0;updateSceneButtons();
+  if(isPlaying&&!isPaused)speakScene();else setSubtitle(scenes[i])}
+function seekTime(T){let i=0;while(i<scenes.length-1&&T>=cum[i+1])i++;
+  stopSpeaking();finished=false;currentScene=i;sceneTime=T-cum[i];holdTimer=0;
+  updateSceneButtons();if(isPlaying&&!isPaused)speakScene();else setSubtitle(scenes[i])}
+
+/* ================= ОБРОБНИКИ ================= */
+btnPlay.onclick=togglePlay;
+btnStop.onclick=stopShow;
+btnNext.onclick=()=>seekScene(currentScene+1);
+btnPrev.onclick=()=>seekScene(currentScene-1);
+progressZone.onclick=e=>{const r=progressZone.getBoundingClientRect();
+  seekTime(clamp((e.clientX-r.left)/r.width,0,1)*TOTAL)};
+engineSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{userPicked=true;
+  engine=b.dataset.e;updateEngineUI();stopSpeaking();if(engine==='hf')hfEnsure();
+  if(isPlaying&&!isPaused)speakScene()});
+speedSel.onchange=()=>{speed=parseFloat(speedSel.value)};
+chkSubs.onchange=()=>{if(!chkSubs.checked)subtitleEl.style.opacity='0';
+  else setSubtitle(scenes[currentScene])};
+chkDebug.onchange=()=>{debugSection.style.display=chkDebug.checked?'block':'none'};
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'){e.preventDefault();togglePlay()}
+  else if(e.code==='ArrowRight')seekScene(currentScene+1);
+  else if(e.code==='ArrowLeft')seekScene(currentScene-1);
+  else if(e.code==='KeyR')stopShow()});
+canvas.addEventListener('click',()=>{if(!hasStarted)startShow()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)lastTs=performance.now()});
+
+/* ================= ЗАСІЧКИ / ДЕБАГ ================= */
+const tickEls=[];
+scenes.forEach((sc,i)=>{const t=document.createElement('div');t.className='tick';
+  t.style.left=(cum[i]/TOTAL*100)+'%';t.title=(i+1)+'. '+sc.tick+' ('+sc.dur+' с)';
+  t.onclick=e=>{e.stopPropagation();seekScene(i)};ticksLayer.appendChild(t);tickEls.push(t);
+  const l=document.createElement('div');l.className='tick-label';l.style.left=(cum[i]/TOTAL*100)+'%';
+  l.textContent=sc.tick;ticksLayer.appendChild(l)});
+function updateLabelsVis(){ticksLayer.querySelectorAll('.tick-label').forEach(l=>
+  l.style.display=chkLabels.checked?'':'none')}
+chkLabels.onchange=updateLabelsVis;updateLabelsVis();
+scenes.forEach((sc,i)=>{const b=document.createElement('button');
+  b.textContent=fmt(cum[i])+' · '+sc.tick;b.onclick=()=>seekScene(i);
+  sceneListEl.appendChild(b)});
+function updateSceneButtons(){sceneListEl.querySelectorAll('button').forEach((b,i)=>
+  b.classList.toggle('active',i===currentScene));
+  sceneIndicator.textContent=(currentScene+1)+'/'+scenes.length+' · '+scenes[currentScene].tick}
+function fmt(s){s=Math.floor(s);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function updateHud(){const sc=scenes[currentScene];
+  const cur=cum[currentScene]+Math.min(sceneTime,sc.dur);
+  progressFill.style.width=(cur/TOTAL*100)+'%';
+  timeDisp.textContent=fmt(cur)+' / '+fmt(TOTAL);
+  tickEls.forEach((t,i)=>t.classList.toggle('active',i===currentScene));
+  voiceState.textContent=(engine==='none'?'🔇':(ttsActive?'🔊':'🔈'))+(hfMsg?' '+hfMsg:'');
+  voiceState.classList.toggle('active',ttsActive)}
+updateSceneButtons();
+
+/* ================= ГОЛОВНИЙ ЦИКЛ ================= */
+let lastTs=performance.now();
+function overlayStart(){ctx.fillStyle='rgba(8,12,26,.55)';ctx.fillRect(0,0,W,H);
+  const pu=1+0.05*Math.sin(performance.now()/300);
+  ctx.save();ctx.translate(W/2,H/2-30);ctx.scale(pu,pu);
+  ctx.beginPath();ctx.arc(0,0,54,0,TAU);ctx.fillStyle='rgba(255,255,255,.95)';ctx.fill();
+  ctx.strokeStyle='#e11d48';ctx.lineWidth=5;ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-14,-22);ctx.lineTo(-14,22);ctx.lineTo(24,0);ctx.closePath();
+  ctx.fillStyle='#e11d48';ctx.fill();ctx.restore();
+  fnt(22,true);ctx.fillStyle='#fff';txt('Натисніть, щоб дивитись з озвученням',W/2,H/2+70);
+  fnt(15);ctx.fillStyle='rgba(255,255,255,.85)';
+  txt('Space — пауза · ←/→ — сцени · клік по шкалі — перемотка',W/2,H/2+102)}
+
+function frame(ts){const rawDt=Math.min(0.1,(ts-lastTs)/1000);lastTs=ts;
+  if(isPlaying&&!isPaused&&!(engine==='hf'&&hfWait)){const dt=rawDt*speed;globalTime+=dt;sceneTime+=dt;
+    const sc=scenes[currentScene];
+    const animDone=sceneTime>=sc.dur;
+    const voiceOK=engine==='none'||ttsDone||sceneTime>sc.dur+(engine==='webspeech'?30:60);
+    if(animDone&&voiceOK){holdTimer+=dt;
+      if(holdTimer>=0.7){
+        if(currentScene<scenes.length-1)startScene(currentScene+1);
+        else{finished=true;isPlaying=false;isPaused=false;setPlayIcon(false);stopSpeaking()}}}
+    else holdTimer=0}
+  gtNow=globalTime; /* критично: мерехтіння ліхтарів, курсор, шеврони, сніг */
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#fbf7f0');g.addColorStop(1,'#f2ebdd');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  scenes[currentScene].draw(W,H,sceneTime,globalTime);
+  const f=1-stag(sceneTime,0,0.45);
+  if(f>0&&hasStarted){ctx.fillStyle='rgba(251,247,240,'+f*0.6+')';ctx.fillRect(0,0,W,H)}
+  if(hasStarted&&engine==='hf'&&hfWait){ctx.fillStyle='rgba(30,30,30,.75)';ctx.font='bold 16px Arial';ctx.textAlign='left';ctx.fillText('Готую озвучення…',16,H-16)}
+  if(!hasStarted)overlayStart();
+  updateHud();
+  requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

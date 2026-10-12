@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Задача про стабільні шлюби — анімована презентація</title>
+<style>
+:root{--bg:#f6f1e7;--txt:#2c2416;--mut:#6b5d4f;--red:#e11d48}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Georgia,'Times New Roman',serif;background:var(--bg);color:var(--txt);
+  display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:18px}
+.container{width:100%;max-width:1240px;display:flex;flex-direction:column}
+.presentation{width:100%;aspect-ratio:16/9;background:#fff;border:2px solid #d4cfc7;
+  border-radius:10px 10px 0 0;position:relative;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+canvas{width:100%;height:100%;display:block;cursor:pointer}
+.scene-indicator{position:absolute;top:14px;right:14px;background:rgba(30,64,175,.92);color:#fff;
+  padding:5px 12px;border-radius:5px;font-size:13px;font-weight:bold;pointer-events:none}
+.subtitle{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
+  background:rgba(255,255,255,.95);padding:10px 20px;border-radius:8px;border:1px solid #d4cfc7;
+  font-size:17px;max-width:82%;text-align:center;line-height:1.45;box-shadow:0 2px 10px rgba(0,0,0,.12);
+  transition:opacity .3s;pointer-events:none}
+.subtitle b{color:#1e40af}
+.controls{background:linear-gradient(#241c15,#15100b);border-radius:0 0 10px 10px;padding:6px 14px 12px}
+.progress-zone{position:relative;height:40px;cursor:pointer}
+.progress-track{position:absolute;left:0;right:0;top:15px;height:5px;background:rgba(255,255,255,.16);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;width:0;background:linear-gradient(90deg,#e11d48,#f43f5e);border-radius:3px}
+.tick{position:absolute;top:11px;width:3px;height:13px;background:rgba(255,255,255,.45);border-radius:2px;transform:translateX(-1px)}
+.tick:hover{background:#fff}
+.tick.active{background:#fbbf24;box-shadow:0 0 6px #fbbf24}
+.tick-label{position:absolute;top:27px;transform:translateX(-50%);font-size:10px;color:rgba(255,255,255,.62);
+  white-space:nowrap;pointer-events:none;font-family:Arial,sans-serif}
+.btn-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.ctl{background:transparent;border:none;cursor:pointer;width:34px;height:34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;transition:background .2s}
+.ctl:hover{background:rgba(255,255,255,.12)}
+.ctl svg{width:19px;height:19px;fill:#fff}
+.time{color:#fff;font:13px Arial;margin-left:4px;min-width:96px}
+.seg{display:flex;border:1px solid rgba(255,255,255,.18);border-radius:7px;overflow:hidden}
+.seg button{background:transparent;border:none;color:#cfc7ba;padding:5px 10px;font:12px Arial;cursor:pointer}
+.seg button+button{border-left:1px solid rgba(255,255,255,.14)}
+.seg button.on{background:var(--red);color:#fff}
+select{background:#2a221b;color:#eee;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px 6px;font:12px Arial}
+.chk{display:flex;align-items:center;gap:5px;color:#d9d2c5;font:13px Arial;cursor:pointer;user-select:none}
+.chk input{accent-color:var(--red);width:15px;height:15px;cursor:pointer}
+.voice{margin-left:auto;color:#fff;font:15px Arial;background:rgba(255,255,255,.1);border-radius:5px;padding:3px 9px}
+.voice.active{animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.45}}
+.debug-section{margin-top:14px;background:#fff;border:2px solid #d4cfc7;border-radius:8px;padding:14px}
+.debug-section h3{font-size:14px;color:var(--mut);margin-bottom:10px}
+.scene-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:7px}
+.scene-list button{padding:7px;border:2px solid #d4cfc7;border-radius:6px;background:#fff;color:var(--txt);
+  font:12px Georgia;cursor:pointer;text-align:left}
+.scene-list button:hover{border-color:#1e40af}
+.scene-list button.active{background:#1e40af;color:#fff;border-color:#1e40af}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="presentation">
+    <canvas id="canvas"></canvas>
+    <div class="scene-indicator" id="sceneIndicator"></div>
+    <div class="subtitle" id="subtitle" style="opacity:0"></div>
+  </div>
+
+  <div class="controls">
+    <div class="progress-zone" id="progressZone">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div id="ticksLayer"></div>
+    </div>
+    <div class="btn-row">
+      <button class="ctl" id="btnPlay" title="Грати / Пауза (Space)"><span id="icoPlay"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span><span id="icoPause" style="display:none"><svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg></span></button>
+      <button class="ctl" id="btnStop" title="Спочатку (R)"><svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg></button>
+      <button class="ctl" id="btnPrev" title="Попередня сцена (←)"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+      <button class="ctl" id="btnNext" title="Наступна сцена (→)"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+      <span class="time" id="timeDisp">0:00 / 0:00</span>
+      <div class="seg" id="engineSeg" title="Рушій озвучення">
+        <button data-e="hf" title="Українська нейромережа (безкоштовне демо на Hugging Face)">UA нейро</button>
+        <button data-e="webspeech">Web Speech</button>
+        <button data-e="google" class="on">Google TTS</button>
+        <button data-e="none">Тихо</button>
+      </div>
+      <select id="hfVoice" title="Голос (для UA нейро)"><option value="Тетяна (жіночий) 👩">Тетяна</option><option value="Лада (жіночий) 👩">Лада</option><option value="Дмитро (чоловічий) 👨">Дмитро</option><option value="Микита (чоловічий) 👨" selected>Микита</option><option value="Олекса (чоловічий) 👨">Олекса</option></select>
+      <select id="speedSel" title="Швидкість">
+        <option value="0.75">0.75×</option><option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option><option value="1.5">1.5×</option>
+      </select>
+      <label class="chk"><input type="checkbox" id="chkSubs" checked><span>Субтитри</span></label>
+      <label class="chk"><input type="checkbox" id="chkLabels" checked><span>Назви сцен</span></label>
+      <label class="chk"><input type="checkbox" id="chkDebug"><span>Дебаг</span></label>
+      <span class="voice" id="voiceState">🔈</span>
+    </div>
+  </div>
+
+  <div class="debug-section" id="debugSection" style="display:none">
+    <h3>🔧 Перейти до сцени</h3>
+    <div class="scene-list" id="sceneList"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================= БАЗА ================= */
+const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d');
+const subtitleEl=document.getElementById('subtitle'),sceneIndicator=document.getElementById('sceneIndicator');
+const progressZone=document.getElementById('progressZone'),progressFill=document.getElementById('progressFill');
+const timeDisp=document.getElementById('timeDisp'),voiceState=document.getElementById('voiceState');
+const ticksLayer=document.getElementById('ticksLayer'),sceneListEl=document.getElementById('sceneList');
+const debugSection=document.getElementById('debugSection');
+const chkSubs=document.getElementById('chkSubs'),chkLabels=document.getElementById('chkLabels'),chkDebug=document.getElementById('chkDebug');
+const btnPlay=document.getElementById('btnPlay'),btnStop=document.getElementById('btnStop'),
+      btnPrev=document.getElementById('btnPrev'),btnNext=document.getElementById('btnNext'),
+      icoPlay=document.getElementById('icoPlay'),icoPause=document.getElementById('icoPause'),
+      speedSel=document.getElementById('speedSel'),engineSeg=document.getElementById('engineSeg');
+
+let W=0,H=0,K=1,DPR=1;
+function resize(){const r=canvas.getBoundingClientRect();DPR=window.devicePixelRatio||1;
+  W=r.width;H=r.height;canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);
+  K=Math.max(.6,Math.min(1.1,W/1150));}
+window.addEventListener('resize',resize);resize();
+
+const TAU=Math.PI*2;
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const lerp2=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t)];
+const eo=t=>1-Math.pow(1-t,3);
+const eio=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const eob=t=>{const c=1.70158;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2)};
+const stag=(t,s,d)=>clamp((t-s)/d,0,1);
+const rnd=i=>{const x=Math.sin(i*127.1+311.7)*43758.5453;return x-Math.floor(x)};
+const BLUE='#2563eb',RED='#dc2626';
+let gtNow=0;
+function fnt(px,bold){ctx.font=(bold?'bold ':'')+Math.round(px*K)+'px Georgia,"Times New Roman",serif'}
+function fntE(px){ctx.font=Math.round(px*K)+'px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif'}
+function txt(t,x,y,al){ctx.textAlign=al||'center';ctx.fillText(t,x,y)}
+function rr(x,y,w,h,r){r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+function card(x,y,w,h){ctx.fillStyle='rgba(255,255,255,.93)';rr(x,y,w,h,10*K);ctx.fill();
+  ctx.strokeStyle='#d4cfc7';ctx.lineWidth=1.5*K;ctx.stroke()}
+function chip(text,x,y,al,col){col=col||'#1e40af';if(al<=0)return;ctx.globalAlpha=al;fnt(16,true);
+  const tw=ctx.measureText(text).width;ctx.fillStyle='rgba(255,255,255,.95)';rr(x-tw/2-10*K,y-14*K,tw+20*K,26*K,7*K);ctx.fill();
+  ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.stroke();ctx.fillStyle=col;txt(text,x,y+5*K);ctx.globalAlpha=1}
+function stamp(text,x,y,size,color,st,t0,rot){const p=eob(stag(st,t0,0.45));if(p<=0)return;
+  ctx.save();ctx.translate(x,y);ctx.rotate((rot||-0.1)*(1-p*.5));ctx.scale(p,p);
+  fnt(size,true);const w2=ctx.measureText(text).width+36*K;
+  ctx.fillStyle='rgba(255,255,255,.93)';rr(-w2/2,-size*.72*K,w2,size*1.44*K,10*K);ctx.fill();
+  ctx.strokeStyle=color;ctx.lineWidth=3*K;ctx.stroke();ctx.fillStyle=color;txt(text,0,size*.34*K);ctx.restore()}
+function shock(x,y,st,t0,color,R){R=R||180;const u=stag(st,t0,0.9);if(u<=0||u>=1)return;
+  ctx.strokeStyle=color;ctx.globalAlpha=(1-u)*.8;ctx.lineWidth=(4*(1-u)+1)*K;
+  ctx.beginPath();ctx.arc(x,y,u*R*K,0,TAU);ctx.stroke();ctx.globalAlpha=1}
+function confetti(x,y,st,t0,n){for(let i=0;i<n;i++){const u=(st-t0)-i*.012;if(u<0||u>2.6)continue;
+  const a=rnd(i)*TAU,v=(110+rnd(i+50)*170)*K,dx=Math.cos(a)*v*u*.6,dy=Math.sin(a)*v*u*.6+140*K*u*u;
+  ctx.globalAlpha=clamp(1-u/2.6,0,1);ctx.fillStyle=[BLUE,RED,'#eab308','#16a34a'][i%4];
+  ctx.beginPath();ctx.arc(x+dx,y+dy,3.5*K,0,TAU);ctx.fill()}ctx.globalAlpha=1}
+function typeText(text,st,t0){const n=Math.floor(Math.max(0,(st-t0))*30);if(n<=0)return null;
+  return text.slice(0,n)+(n<text.length&&Math.floor(gtNow*3)%2?'▌':'')}
+function caption(text,st,t0,y){const shown=typeText(text,st,t0);if(!shown)return;
+  fnt(19);const tw=ctx.measureText(text).width;
+  ctx.fillStyle='rgba(255,255,255,.88)';rr(W/2-tw/2-14,y-24*K,tw+28,34*K,8);ctx.fill();
+  ctx.strokeStyle='#d4cfc7';ctx.lineWidth=1;ctx.stroke();ctx.fillStyle='#4a3f2e';txt(shown,W/2,y)}
+function sceneTitle(t,st,col){col=col||'#2c2416';const p=eob(stag(st,0.1,0.6));if(p>0){
+  ctx.save();ctx.translate(W/2,44);ctx.scale(Math.max(.001,p),Math.max(.001,p));
+  fnt(30,true);ctx.fillStyle=col;txt(t,0,0);ctx.restore()}
+  const u=eo(stag(st,0.4,0.5));if(u>0){ctx.strokeStyle='#e11d48';ctx.lineWidth=3*K;ctx.beginPath();
+  ctx.moveTo(W/2-95*K*u,56);ctx.lineTo(W/2+95*K*u,56);ctx.stroke()}}
+function arrowHead(x,y,ang,size,col,a){if(a<=0)return;ctx.save();ctx.translate(x,y);ctx.rotate(ang);ctx.globalAlpha=a;
+  ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(-size,-size*0.7);ctx.lineTo(size*0.6,0);ctx.lineTo(-size,size*0.7);ctx.closePath();ctx.fill();ctx.restore()}
+function curveArrow(x1,y1,x2,y2,bend,col,pop,lw){if(pop<=0)return;const mx=(x1+x2)/2,my=(y1+y2)/2;
+  const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy)||1;const nx=-dy/len,ny=dx/len;
+  const cx2=mx+nx*bend,cy2=my+ny*bend;
+  ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.lineCap='round';ctx.globalAlpha=pop;
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.quadraticCurveTo(cx2,cy2,x2,y2);ctx.stroke();
+  arrowHead(x2,y2,Math.atan2(y2-cy2,x2-cx2),8*K,col,pop);ctx.globalAlpha=1}
+function heart(x,y,s,a){ctx.save();ctx.translate(x,y);ctx.scale(s/8,s/8);ctx.globalAlpha=a;
+  ctx.fillStyle='#ec4899';ctx.beginPath();ctx.moveTo(0,4);ctx.bezierCurveTo(-6,-2,-3,-8,0,-3);
+  ctx.bezierCurveTo(3,-8,6,-2,0,4);ctx.fill();ctx.restore()}
+function hearts(x,y,st,t0,n){for(let i=0;i<n;i++){const u=st-t0-i*0.5;if(u<0||u>2.4)continue;
+  heart(x+Math.sin(u*5+i*2)*12*K,y-14*K-u*50*K,(1.6+(i%2)*0.8)*K*2.2,clamp(1-u/2.4,0,1)*0.9)}}
+function popWrap(x,y,p,fn){if(p<=0)return;ctx.save();ctx.translate(x,y);ctx.scale(p,p);ctx.translate(-x,-y);fn();ctx.restore()}
+function pointer(x1,y1,x2,y2,st,t0){const u=stag(st,t0,0.4);if(u<=0)return;
+  ctx.globalAlpha=u;ctx.strokeStyle='#94a3b8';ctx.lineWidth=1.6;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#94a3b8';ctx.beginPath();ctx.arc(x2,y2,3.5*K,0,TAU);ctx.fill();ctx.globalAlpha=1}
+function wordChips(cx,cy,word,st,t0,active,doneN,sc){sc=sc||1;const n=word.length,gap=54*K*sc;const x0=cx-(n-1)*gap/2;
+  word.forEach((L,i)=>{const p=eob(stag(st,t0+i*0.3,0.4));if(p<=0)return;
+    const x=x0+i*gap,col=(L==='B')?BLUE:RED,act=(i===active);
+    const sc2=act?(1+0.1*Math.sin(gtNow*6)):1;
+    ctx.save();ctx.translate(x,cy);ctx.scale(sc*sc2*p,sc*sc2*p);
+    ctx.beginPath();ctx.arc(0,0,16*K,0,TAU);ctx.fillStyle=col;ctx.fill();
+    ctx.strokeStyle=act?'#fff':'rgba(15,23,42,.35)';ctx.lineWidth=act?3:1.5;ctx.stroke();
+    if(act){ctx.globalAlpha=0.5+0.3*Math.sin(gtNow*7);ctx.beginPath();ctx.arc(0,0,23*K,0,TAU);
+      ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();ctx.globalAlpha=1}
+    fnt(15,true);ctx.fillStyle='#fff';txt(L==='B'?'С':'Ч',0,5.5*K);
+    if(i<doneN){fnt(13,true);ctx.fillStyle='#22c55e';txt('✓',13*K,-13*K)}
+    ctx.restore()})}
+function waves(x,y,st,t0,col){if(st<t0)return;const u0=st-t0;
+  for(let k=0;k<3;k++){const u=(u0*1.1-k*0.33)%1;if(u<0)continue;
+    ctx.globalAlpha=(1-u)*0.8;ctx.strokeStyle=col;ctx.lineWidth=2*K;
+    ctx.beginPath();ctx.arc(x,y,(6+u*20)*K,-0.9,0.9);ctx.stroke()}ctx.globalAlpha=1}
+function drawWalkerDot(x,y,col){ctx.beginPath();ctx.arc(x,y-10*K,9*K,0,TAU);ctx.fillStyle=col;ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle='#1f2937';ctx.beginPath();ctx.arc(x-3*K,y-12*K,1.4*K,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.arc(x+3*K,y-12*K,1.4*K,0,TAU);ctx.fill()}
+
+/* ================= СТАБІЛЬНІ ШЛЮБИ ================= */
+const MN=['Андрій','Борис','Влад','Гліб'],WN=['Оля','Марта','Софія','Дана'],PINK='#ec4899',GREEN='#16a34a',
+  SM=[[9,7,4,2],[9,6,1,4],[8,3,6,2],[9,7,4,1]],SW=[[9,4,6,2],[3,8,1,6],[5,2,7,9],[8,6,4,1]],
+  MP=SM.map(r=>[0,1,2,3].sort((a,b)=>r[b]-r[a])),WP=SW.map(r=>[0,1,2,3].sort((a,b)=>r[b]-r[a]));
+const LOG=(()=>{const nx=[0,0,0,0],hold=[-1,-1,-1,-1],rounds=[];let free=[0,1,2,3];
+  while(free.length){const props=free.map(m=>({m,w:MP[m][nx[m]++]})),nf=[];
+    props.forEach(e=>{const c=hold[e.w];
+      if(c<0||WP[e.w].indexOf(e.m)<WP[e.w].indexOf(c)){if(c>=0)nf.push(c);hold[e.w]=e.m}else nf.push(e.m)});
+    props.forEach(e=>e.ok=hold[e.w]===e.m);rounds.push({props,hold:hold.slice()});free=nf}
+  return rounds})();
+const PX=(isM,i)=>[isM?W*0.2:W*0.8,H*0.27+i*H*0.15];
+function person(isM,i,gl,bob){const p=PX(isM,i),r=23*K,y=p[1]+(bob?Math.sin(gtNow*5+i*1.7+(isM?0:2))*4*K:0);
+  if(gl){ctx.globalAlpha=.4;ctx.fillStyle='#facc15';ctx.beginPath();ctx.arc(p[0],y,r+9*K,0,TAU);ctx.fill();ctx.globalAlpha=1}
+  ctx.fillStyle=isM?BLUE:PINK;ctx.beginPath();ctx.arc(p[0],y,r,0,TAU);ctx.fill();
+  ctx.fillStyle='#fff';[-1,1].forEach(s=>{ctx.beginPath();ctx.arc(p[0]+s*8*K,y-4*K,3*K,0,TAU);ctx.fill()});
+  ctx.strokeStyle='#fff';ctx.lineWidth=2*K;ctx.beginPath();ctx.arc(p[0],y+2*K,9*K,0.2,Math.PI-0.2);ctx.stroke();
+  fnt(15,true);ctx.fillStyle='#2c2416';txt((isM?MN:WN)[i],p[0],y+r+17*K)}
+function people(gl,bob){for(let i=0;i<4;i++){person(true,i,gl&&gl[0]===i,bob);person(false,i,gl&&gl[1]===i,bob)}}
+function link(m,w,col,a,lw,dash){if(a<=0)return;const A=PX(true,m),B=PX(false,w);
+  ctx.globalAlpha=a;ctx.strokeStyle=col;ctx.lineWidth=(lw||4)*K;ctx.setLineDash(dash?[8*K,6*K]:[]);
+  ctx.beginPath();ctx.moveTo(A[0]+27*K,A[1]);ctx.lineTo(B[0]-27*K,B[1]);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1}
+function matrix(x,y,cs,title,rn,cn,S,col,st,t0){const gx=x+cs*1.35;
+  fnt(18,true);ctx.fillStyle=col;txt(title,gx+cs*2,y-cs*0.62);
+  cn.forEach((c,j)=>{fnt(12,true);ctx.fillStyle='#4a3f2e';txt(c,gx+j*cs+cs/2,y-6*K)});
+  for(let i=0;i<4;i++){fnt(13,true);ctx.fillStyle='#4a3f2e';txt(rn[i],gx-8*K,y+i*cs+cs*0.58,'right');
+    for(let j=0;j<4;j++){const p=eob(stag(st,t0+(i*4+j)*0.14,0.35));if(p<=0)continue;
+      ctx.save();ctx.translate(gx+j*cs+cs/2,y+i*cs+cs/2);ctx.scale(Math.max(.001,p),Math.max(.001,p));
+      ctx.globalAlpha=0.12+S[i][j]*0.095;ctx.fillStyle=col;rr(-cs/2+3,-cs/2+3,cs-6,cs-6,8*K);ctx.fill();ctx.globalAlpha=1;
+      fnt(22,true);ctx.fillStyle='#2c2416';txt(String(S[i][j]),0,7*K);ctx.restore()}}}
+function sc0(w,h,st,gt){sceneTitle('Матриця симпатій',st);const cs=Math.min(W*0.075,H*0.11),y=H*0.3;
+  matrix(W*0.03,y,cs,'Хлопці оцінюють дівчат',MN,WN,SM,BLUE,st,0.8);
+  matrix(W*0.53,y,cs,'Дівчата оцінюють хлопців',WN,MN,SW,PINK,st,5.5);
+  chip('1 — майже не подобається · 9 — дуже подобається',W/2,H*0.80,eo(stag(st,11,0.5)),'#475569');
+  stamp('Задача про стабільні шлюби',W/2,H*0.89,28,'#2c2416',st,16,-0.03)}
+function symArrow(m,w,fromMan,pop){const A=PX(true,m),B=PX(false,w),s=fromMan?SM[m][w]:SW[w][m],o=(fromMan?-8:8)*K,
+  x1=fromMan?A[0]+27*K:B[0]-27*K,y1=(fromMan?A[1]:B[1])+o,x2=fromMan?B[0]-27*K:A[0]+27*K,y2=(fromMan?B[1]:A[1])+o,col=fromMan?BLUE:PINK;
+  if(pop<=0)return;ctx.globalAlpha=pop*(0.22+s*0.085);ctx.strokeStyle=col;ctx.lineWidth=(0.5+s*0.8)*K;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.globalAlpha=1;
+  arrowHead(x2,y2,Math.atan2(y2-y1,x2-x1),(3+s*0.6)*K,col,pop*(0.3+s*0.08))}
+function scBall(w,h,st,gt){sceneTitle('Бал: граф симпатій',st);people(st>13?[0,0]:null,false);
+  for(let m=0;m<4;m++)for(let q=0;q<4;q++){symArrow(m,q,true,eo(stag(st,1+m*0.9,0.6)));symArrow(m,q,false,eo(stag(st,6+q*0.9,0.6)))}
+  chip('Товщина стрілки = сила симпатії (1–9)',W/2,H*0.92,eo(stag(st,10,0.5)),'#475569');
+  const y0=PX(true,0)[1];shock(W/2,y0,st,13,'#eab308',200);
+  chip('взаємні 9: Андрій ↔ Оля',W/2,y0-34*K,eo(stag(st,13,0.5)),'#b45309')}
+const MT=[1,0,2,3],rankM=(m,w)=>MP[m].indexOf(w)+1,rankW=(w,m)=>WP[w].indexOf(m)+1;
+function badge(x,y,n,col){ctx.fillStyle=col||'#facc15';ctx.beginPath();ctx.arc(x,y,12*K,0,TAU);ctx.fill();
+  ctx.strokeStyle='#92400e';ctx.lineWidth=1.5*K;ctx.stroke();fnt(14,true);ctx.fillStyle='#2c2416';txt(String(n),x,y+5*K)}
+function rankFan(isM,i,st,t0,col){const S=PX(isM,i),sg=isM?1:-1;
+  (isM?MP:WP)[i].forEach((j,r)=>{const T=PX(!isM,j),a=eo(stag(st,t0+r*0.8,0.5));if(a<=0)return;
+    const sv=(isM?SM:SW)[i][j];ctx.globalAlpha=a*(0.35+sv*0.07);ctx.strokeStyle=col;ctx.lineWidth=(0.6+sv*0.8)*K;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(S[0]+sg*27*K,S[1]);ctx.lineTo(T[0]-sg*27*K,T[1]);ctx.stroke();ctx.globalAlpha=a;
+    badge(T[0]-sg*48*K,T[1],r+1);ctx.globalAlpha=1})}
+function sc1(w,h,st,gt){sceneTitle('Симпатії',st);
+  if(st<14){people(null,false);
+    if(st<7){rankFan(true,0,st,1,BLUE);chip('Список Андрія: 1 — найбажаніша, 4 — найменш',W/2,H*0.9,eo(stag(st,1,0.5)),BLUE)}
+    else{shock(W/2,H*0.5,st,7,'#94a3b8',200);rankFan(false,0,st,7.5,PINK);
+      chip('Список Олі: 1 — найбажаніший, 4 — найменш',W/2,H*0.9,eo(stag(st,7.5,0.5)),PINK)}}
+  else{const d=st-14;
+    [[true,'Хлопці',MP,MN,WN],[false,'Дівчата',WP,WN,MN]].forEach((c,ci)=>{
+      const x=W*(ci?0.53:0.04),cw=W*0.43,y=H*0.15,p=eo(stag(d,0.2+ci*0.6,0.6));
+      popWrap(x+cw/2,y+H*0.2,p,()=>{card(x,y,cw,H*0.42);fnt(18,true);ctx.fillStyle=c[0]?BLUE:PINK;
+        txt(c[1]+': від кращого до гіршого',x+cw/2,y+30*K);
+        for(let i=0;i<4;i++){fnt(16);ctx.fillStyle='#2c2416';
+          txt(c[3][i]+':  '+c[2][i].map(j=>c[4][j]).join(' › '),x+cw/2,y+72*K+i*38*K)}})});
+    chip('Симпатії — це лише списки. Пар тут ще немає',W/2,H*0.8,eo(stag(d,2.5,0.5)),'#475569')}}
+function sc2(w,h,st,gt){sceneTitle('Розстановка в пари',st);people(null,false);
+  for(let m=0;m<4;m++){const a=eo(stag(st,1+m*1.2,0.6)),A=PX(true,m),B=PX(false,MT[m]);link(m,MT[m],'#64748b',a,5);
+    if(a>0)heart((A[0]+B[0])/2,(A[1]+B[1])/2+4*K,24*K,a);
+    const b=eo(stag(st,10+m*0.4,0.4));
+    if(b>0){ctx.globalAlpha=b;badge(A[0]-48*K,A[1],rankM(m,MT[m]),'#bbf7d0');badge(B[0]+48*K,B[1],rankW(MT[m],m),'#bbf7d0');ctx.globalAlpha=1}}
+  chip('Кожен має рівно одного партнера',W/2,H*0.88,eo(stag(st,6.5,0.5)),'#475569');
+  caption('Числа: яким за його списком виявився партнер',st,12.5,H-30*K)}
+function scB(w,h,st,gt){sceneTitle('Блокуюча пара',st);people(st>9?[0,0]:null,false);
+  const brk=eo(stag(st,16,0.8)),A=PX(true,0),B=PX(false,0);
+  for(let m=0;m<4;m++)link(m,MT[m],'#64748b',m<2?1-brk:1,5);
+  const a=eo(stag(st,2,0.4));
+  if(a>0&&brk<1){ctx.globalAlpha=a*(1-brk);badge(A[0]-48*K,A[1],rankM(0,1),'#fecaca');badge(B[0]+48*K,B[1],rankW(0,1),'#fecaca');ctx.globalAlpha=1}
+  const d=eo(stag(st,9,0.6));link(0,0,RED,d*(1-brk),5,true);
+  if(d>0&&brk<1){[0.16,0.84].forEach(f=>badge(lerp(A[0]+27*K,B[0]-27*K,f),lerp(A[1],B[1],f)+(f<.5?-1:1)*0,1,'#bbf7d0'));
+    chip('блокуюча пара',W/2,A[1]-26*K,d*(1-brk),RED)}
+  if(st>16){link(0,0,PINK,eo(stag(st,17,0.6)),6);hearts(W/2,A[1],st,17,4);
+    chip('обидві старі пари розпалися',W/2,H*0.62,eo(stag(st,16.5,0.5)),RED)}
+  stamp('Стабільна = без блокуючих пар',W/2,H*0.84,24,GREEN,st,19.5,-0.04)}
+function scR(w,h,st,gt){sceneTitle('Алгоритм Гейла — Шеплі',st);
+  const dot=(x,y,c)=>{ctx.fillStyle=c;ctx.beginPath();ctx.arc(x,y,20*K,0,TAU);ctx.fill()};
+  [['1 · Пропонує','кращій зі списку,','яка ще не відмовила'],['2 · Вибирає','вона залишає кращого,','решті відмовляє'],['3 · Йде далі','відмовлені пробують','наступну зі списку']].forEach((s,i)=>{
+    const cw=W*0.29,x=W*(0.03+i*0.325),y=H*0.2,ch=H*0.55,p=eo(stag(st,1.5+i*4.5,0.6)),cx=x+cw/2,cy=y+ch*0.34,L=cx-cw*0.27,R=cx+cw*0.27;
+    popWrap(cx,y+ch/2,p,()=>{card(x,y,cw,ch);
+      if(i===0){dot(L,cy,BLUE);dot(R,cy,PINK);curveArrow(L+24*K,cy,R-24*K,cy,0,BLUE,1,4*K)}
+      if(i===1){dot(L,cy-26*K,BLUE);dot(L,cy+34*K,BLUE);dot(R,cy+4*K,PINK);
+        curveArrow(L+24*K,cy-26*K,R-24*K,cy,0,GREEN,1,4*K);curveArrow(L+24*K,cy+34*K,R-24*K,cy+8*K,0,RED,1,4*K);chip('✕',cx,cy+30*K,1,RED)}
+      if(i===2){dot(L,cy,BLUE);dot(R,cy-26*K,PINK);dot(R,cy+34*K,PINK);
+        curveArrow(L+24*K,cy,R-24*K,cy-26*K,0,'#cbd5e1',1,3*K);curveArrow(L+24*K,cy+4*K,R-24*K,cy+34*K,0,BLUE,1,4*K)}
+      fnt(22,true);ctx.fillStyle='#2c2416';txt(s[0],cx,y+ch*0.66);fnt(15);ctx.fillStyle='#4a3f2e';
+      txt(s[1],cx,y+ch*0.76);txt(s[2],cx,y+ch*0.76+22*K)})});
+  chip('Повторюємо, доки всі не знайдуть пару',W/2,H*0.86,eo(stag(st,15,0.5)),'#475569')}
+function sc3(w,h,st,gt){sceneTitle('Алгоритм у дії',st);
+  const T0=0.8,RD=3.6,n=LOG.length,t=st-T0,done=t>=n*RD,ri=Math.min(n-1,Math.floor(Math.max(0,t)/RD)),u=t-ri*RD;
+  const fin=LOG[n-1].hold,prev=ri>0?LOG[ri-1].hold:[-1,-1,-1,-1],cur=LOG[ri].hold;people(null,false);
+  if(t>=0&&!done){const k=eo(stag(u,1.8,0.6));
+    for(let x=0;x<4;x++){if(prev[x]>=0)link(prev[x],x,PINK,cur[x]===prev[x]?1:1-k,5);
+      if(cur[x]>=0&&cur[x]!==prev[x])link(cur[x],x,PINK,k,5)}
+    LOG[ri].props.forEach(e=>{const A=PX(true,e.m),B=PX(false,e.w),p=eo(stag(u,0,0.8));
+      const col=u<1.8?BLUE:(e.ok?GREEN:RED),a=u<1.8?1:1-k;
+      curveArrow(A[0]+27*K,A[1],B[0]-27*K,B[1],0,col,Math.max(0,p*a),3*K);
+      if(u>=1.8&&!e.ok)chip('✕',(A[0]+B[0])/2,(A[1]+B[1])/2,a,RED)});
+    chip('Раунд '+(ri+1)+' з '+n,W/2,88,1)}
+  if(done){for(let x=0;x<4;x++)link(fin[x],x,PINK,1,5);
+    stamp('Усі в парах — ніхто не втече',W/2,H*0.5,28,GREEN,st,T0+n*RD,-0.05);confetti(W/2,H*0.5,st,T0+n*RD,40)}}
+function sc4(w,h,st,gt){sceneTitle('Чому це працює',st);
+  const cs=Math.min(W*0.085,H*0.12),x0=W*0.14,y0=H*0.26,fin=LOG[LOG.length-1].hold,seq=[];
+  LOG.forEach(r=>r.props.forEach(e=>seq.push(e)));
+  for(let m=0;m<4;m++){fnt(14,true);ctx.fillStyle=BLUE;txt(MN[m],x0-8*K,y0+m*cs+cs*0.6,'right');
+    fnt(14,true);ctx.fillStyle=PINK;txt(WN[m],x0+m*cs+cs/2,y0-10*K);
+    for(let w2=0;w2<4;w2++){const i=seq.findIndex(e=>e.m===m&&e.w===w2),p=i<0?0:eob(stag(st,0.8+i*0.7,0.4));
+      ctx.fillStyle='#eee8dc';rr(x0+w2*cs+3,y0+m*cs+3,cs-6,cs-6,8*K);ctx.fill();
+      if(p>0){ctx.fillStyle=fin[w2]===m?GREEN:RED;ctx.globalAlpha=.85;
+        rr(x0+w2*cs+3+(cs-6)*(1-p)/2,y0+m*cs+3+(cs-6)*(1-p)/2,(cs-6)*p,(cs-6)*p,8*K);ctx.fill();ctx.globalAlpha=1}}}
+  const cnt=Math.min(seq.length,Math.max(0,Math.floor((st-0.8)/0.7)+1));
+  fnt(22,true);ctx.fillStyle='#2c2416';txt('Пропозицій: '+cnt+' з 16 можливих',x0+2*cs,y0+4*cs+34*K);
+  chip('Кожен пропонує кожній не більше разу → кінець гарантовано',W*0.72,H*0.40,eo(stag(st,8,0.5)),BLUE);
+  chip('Той, кого відхилили, у неї був би «гіршим» → блокуючої пари немає',W*0.72,H*0.54,eo(stag(st,11,0.5)),GREEN)}
+function sc5(w,h,st,gt){sceneTitle('Кому краще?',st);
+  const sw=st>9?1:0;
+  [[0,'пропонують','отримують НАЙКРАЩУ','можливу стабільну пару',GREEN],[1,'обирають','отримують НАЙГІРШУ','можливу стабільну пару',RED]].forEach(c=>{
+    const x=W*(c[0]?0.54:0.04),cw=W*0.42,y=H*0.2,p=eo(stag(st,0.5+c[0]*0.8,0.6)),g=(c[0]^sw)===1;
+    popWrap(x+cw/2,y+H*0.2,p,()=>{card(x,y,cw,H*0.44);ctx.fillStyle=g?PINK:BLUE;ctx.beginPath();ctx.arc(x+cw/2,y+62*K,30*K,0,TAU);ctx.fill();
+      fnt(26,true);ctx.fillStyle='#2c2416';txt((g?'Дівчата ':'Хлопці ')+c[1],x+cw/2,y+138*K);
+      fnt(19);ctx.fillStyle=c[4];txt(c[2],x+cw/2,y+174*K);txt(c[3],x+cw/2,y+200*K)})});
+  shock(W/2,H*0.4,st,9,'#eab308',220);
+  chip('Поміняли ролі — поміняли переможця',W/2,H*0.82,eo(stag(st,9.4,0.5)),'#b45309')}
+function sc6(w,h,st,gt){sceneTitle('Де це працює',st);
+  [['лікарі','лікарні'],['школярі','школи'],['донори нирок','пацієнти']].forEach((r,i)=>{
+    const y=H*(0.27+i*0.16),p=eo(stag(st,0.6+i*1.6,0.6));
+    chip(r[0],W*0.22,y,p,BLUE);chip(r[1],W*0.78,y,p,PINK);
+    curveArrow(W*0.22+100*K,y,W*0.78-100*K,y,(i-1)*26*K,'#64748b',p,3*K)});
+  stamp('Нобелівська премія 2012 · Шеплі і Рот',W/2,H*0.80,26,'#b45309',st,8,-0.04);confetti(W/2,H*0.8,st,8,50)}
+const scenes=[
+ {tick:'Матриця',dur:20,draw:sc0,text:"Уявімо чотирьох хлопців і чотирьох дівчат. Кожен ставить кожному оцінку від одного до дев'яти: наскільки йому симпатична ця людина. Так виходять дві матриці симпатій: хлопців про дівчат і дівчат про хлопців. Чим більше число, тим сильніша симпатія. Тож кому з ким бути? Це — задача про стабільні шлюби."},
+ {tick:'Бал',dur:20,draw:scBall,text:"А тепер — бал. Ось ті самі оцінки у вигляді графа. Стрілка йде від людини до тієї, кого вона оцінює, і чим вона товща, тим сильніша симпатія. Такий граф, де стрілки йдуть між двома групами, називають дводольним. Андрій і Оля оцінюють одне одного на дев'ять, тому їхні стрілки найтовщі."},
+ {tick:'Рейтинг',dur:24,draw:sc1,text:"Із матриці виходить рейтинг. Ось Андрій. Для нього перша Оля, далі Марта, Софія і Дана, і що вища оцінка, то товща стрілка. А ось Оля. Для неї найкращий Андрій, потім Влад, Борис і Гліб. Ось усі рейтинги разом. Симпатії — це лише оцінки. Вони не кажуть, хто з ким танцює."},
+ {tick:'Розстановка',dur:18,draw:sc2,text:"Тепер — розстановка. Це інша річ: розподіл на пари. Кожен хлопець танцює рівно з однією дівчиною, і навпаки. Ось один із варіантів: Андрій із Мартою, Борис з Олею, Влад із Софією, Гліб з Даною. Біля кожного видно, яким за списком виявився його партнер."},
+ {tick:'Блокуюча пара',dur:22,draw:scB,text:"Чим погана ця розстановка? Андрій має Марту, а вона лише друга в його списку. Оля має Бориса, а він лише третій у її списку. Але Андрій і Оля ставлять одне одного на перше місце. Тож вони підуть одне до одного, і обидві старі пари розпадуться. Таку пару називають блокуючою. Розстановка без блокуючих пар називається стабільною."},
+ {tick:'Правила',dur:18,draw:scR,text:"Як знайти стабільну розстановку? Алгоритм Гейла та Шеплі, тисяча дев'ятсот шістдесят другий рік. Крок перший: хлопець пропонує найкращій дівчині зі свого списку, яка ще не відмовила. Крок другий: дівчина залишає того, хто їй подобається більше, а решті відмовляє. Крок третій: відмовлені йдуть до наступної дівчини зі списку. Так триває, доки всі не знайдуть пару."},
+ {tick:'Алгоритм',dur:22,draw:sc3,text:"Дивіться. Усі четверо пропонують Олі. Вона обирає Андрія, а решті відмовляє. Відмовлені пробують наступних. Софія спершу бере Влада, але потім з'являється Гліб, і він подобається їй більше. Владу доводиться йти далі. Зрештою кожен знаходить пару."},
+ {tick:'Чому працює',dur:15,draw:sc4,text:"Алгоритм завжди завершується. Кожен пропонує кожній щонайбільше один раз, тож пропозицій не більше шістнадцяти. І розподіл стабільний. Якщо хлопець хотів би когось кращого, то вона вже відмовила йому, бо мала кращого."},
+ {tick:'Кому краще',dur:15,draw:sc5,text:"Але є тонкість. Той, хто пропонує, отримує найкращу пару з усіх можливих стабільних. А той, хто обирає, отримує найгіршу з можливих. Якщо почнуть пропонувати дівчата, виграють саме вони."},
+ {tick:'Реальність',dur:14,draw:sc6,text:"Це не лише бал. Так розподіляють лікарів по лікарнях, школярів по школах, а донорські нирки пацієнтам. У дві тисячі дванадцятому році Шеплі та Елвін Рот отримали за це Нобелівську премію з економіки. Дякую за увагу!"}];
+const cum=[];let acc0=0;scenes.forEach(s=>{cum.push(acc0);acc0+=s.dur});
+const TOTAL=acc0;
+
+/* ================= TTS (гібрид) ================= */
+const synth=window.speechSynthesis;
+let engine='google',userPicked=false,gAudio=null,gToken=0;
+let voiceScene=-1,ttsDone=true,ttsActive=false;
+function detect(){if(userPicked)return;const vs=(synth&&synth.getVoices?synth.getVoices():[])||[];
+  const uk=vs.some(v=>v.lang&&v.lang.toLowerCase().startsWith('uk'));
+  updateEngineUI()}
+if(synth){detect();if(synth.onvoiceschanged!==undefined)synth.onvoiceschanged=detect}
+function updateEngineUI(){engineSeg.querySelectorAll('button').forEach(b=>
+  b.classList.toggle('on',b.dataset.e===engine))}
+function splitChunks(text,maxLen){const ss=text.match(/[^.!?]+[.!?]+/g)||[text];
+  const out=[];let cur='';ss.forEach(s=>{if((cur+s).length>maxLen&&cur){out.push(cur.trim());cur=s}else cur+=s});
+  if(cur)out.push(cur.trim());return out}
+function speak(text,sceneIdx){voiceScene=sceneIdx;ttsDone=false;ttsActive=true;
+  const done=()=>{if(voiceScene===sceneIdx){ttsDone=true;ttsActive=false}};
+  if(engine==='none'){ttsDone=true;ttsActive=false;return}
+  if(engine==='webspeech'&&synth){try{synth.cancel()}catch(e){}
+    const u=new SpeechSynthesisUtterance(text);u.lang='uk-UA';
+    u.rate=clamp(0.95*speed,0.5,2);u.pitch=1;
+    u.onend=done;u.onerror=done;synth.speak(u);if(synth.paused)synth.resume()}
+  else if(engine==='hf'){const myTok=++gToken;hfWait=true;
+    (async()=>{
+      if(!await hfEnsure()){if(myTok===gToken)hfFallback(text,sceneIdx);return}
+      const ch=hfSplit(text,110),ps=ch.map(c=>hfSynth(c));ps.forEach(p=>p.catch(()=>{}));{const nx=scenes[sceneIdx+1];if(nx)hfSynth(hfSplit(nx.text,110)[0]).catch(()=>{})}
+      for(let i=0;i<ch.length;i++){let url;
+        if(i>0)hfWait=true;try{url=await ps[i]}catch(e){console.error('UA нейро:',e);if(myTok===gToken)hfFallback(text,sceneIdx);return}
+        if(myTok!==gToken)return;
+        hfWait=false;
+        await new Promise(res=>{const a=new Audio(url);a.playbackRate=speed;gAudio=a;
+          const txt=ch[i];a.addEventListener('loadedmetadata',()=>console.log('[UA нейро]',txt.length,'знаків →',a.duration.toFixed(1),'с:',txt));
+          a.onended=res;a.onerror=res;
+          const pl=a.play();if(pl)pl.catch(e=>{if(!(e&&e.name==='AbortError'))res()});
+          if(isPaused)a.pause()});
+        if(myTok!==gToken)return}
+      done()})().catch(e=>{console.error(e);hfWait=false;done()})}
+  else{const myTok=++gToken,ch=splitChunks(text,180);let i=0;
+    (function next(){if(myTok!==gToken)return;
+      if(i>=ch.length){done();return}
+      const a=new Audio('https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=uk&q='+encodeURIComponent(ch[i]));
+      gAudio=a;a.onended=()=>{i++;next()};a.onerror=()=>{i++;next()};
+      a.play().catch(()=>{i++;next()})})()}}
+/* ---- UA нейро: демо robinhad/ukrainian-tts на Hugging Face (відкат -> Google TTS) ---- */
+const HF_SPACE='robinhad/ukrainian-tts',HF_HOST='https://robinhad-ukrainian-tts.hf.space',
+  HF_CLIENT='https://cdn.jsdelivr.net/npm/@gradio/client@2.6.0/dist/index.min.js';
+const hfVoiceSel=document.getElementById('hfVoice');
+let hfApp=null,hfConn=null,hfMsg='',hfWait=false,hfQ=Promise.resolve(),hfApi='/predict';const hfCache=new Map();
+const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout '+ms)),ms))]);
+function hfEnsure(){if(hfConn)return hfConn;
+  hfConn=(async()=>{hfMsg='⏳';const m=await import(HF_CLIENT);
+    hfApp=await withTimeout(m.Client.connect(HF_SPACE),60000);hfMsg='';return true})()
+    .catch(e=>{console.error('UA нейро:',e);hfMsg='⚠ UA нейро недоступне → Google';hfConn=null;return false});
+  return hfConn}
+function hfSynth(t){const v=hfVoiceSel.value,k=v+'|'+t;if(hfCache.has(k))return hfCache.get(k);
+  hfQ.catch(()=>{});
+  const pr=(hfQ=hfQ.catch(()=>{}).then(async()=>{let last;
+    for(const n of [hfApi,'/tts']){const t0=Date.now();
+      try{const r=await withTimeout(hfApp.predict(n,[t,v]),90000);
+        const f=r&&r.data&&r.data[0];const u=f&&(f.url||(f.path&&HF_HOST+'/file='+f.path));
+        if(!u)throw new Error('немає аудіо у відповіді');hfApi=n;return u}
+      catch(e){last=e;if(Date.now()-t0>4000)break}}
+    throw last}));
+  hfCache.set(k,pr);pr.catch(()=>hfCache.delete(k));return pr}
+/* Ділимо лише за межами речень (. ! ? …): кома чи тире всередині речення не повинні ставати «крапкою».
+   Короткі сусідні речення склеюємо до max знаків. Дуже довге речення (>220) ділимо лише за ; або : */
+function hfSplit(text,max){
+  const ss=(text.match(/[^.!?…]+[.!?…]+["»”)]*|[^.!?…]+$/g)||[text]).map(x=>x.trim()).filter(Boolean);
+  const out=[];
+  ss.forEach(x=>{if(x.length<=220){out.push(x);return}
+    let cur='';x.split(/(?<=[;:])\s+/).forEach(q=>{
+      if(cur&&(cur+' '+q).length>max){out.push(cur);cur=q}else cur=cur?cur+' '+q:q});
+    if(cur)out.push(cur)});
+  const m=[];out.forEach(q=>{if(m.length&&(m[m.length-1]+' '+q).length<=max)m[m.length-1]+=' '+q;else m.push(q)});
+  return m.length?m:[text]}
+function hfFallback(text,idx){hfWait=false;engine='google';updateEngineUI();
+  if(!hfMsg)hfMsg='⚠ UA нейро недоступне → Google';speak(text,idx)}
+hfVoiceSel.onchange=()=>{if(engine==='hf'&&isPlaying&&!isPaused){stopSpeaking();speakScene()}};
+
+function stopSpeaking(){hfWait=false;gToken++;if(gAudio){gAudio.pause();gAudio=null}
+  if(synth){try{synth.cancel()}catch(e){}}
+  ttsActive=false;ttsDone=true}
+
+/* ================= ПЛЕЄР ================= */
+let currentScene=0,sceneTime=0,globalTime=0,isPlaying=false,isPaused=false,
+    hasStarted=false,finished=false,holdTimer=0,speed=1;
+function setPlayIcon(playing){icoPlay.style.display=playing?'none':'';
+  icoPause.style.display=playing?'':'none'}
+function setSubtitle(sc){if(chkSubs.checked){subtitleEl.innerHTML='<b>'+sc.tick+'</b> — '+sc.text;
+  subtitleEl.style.opacity='1'}else subtitleEl.style.opacity='0'}
+function startScene(i){currentScene=clamp(i,0,scenes.length-1);sceneTime=0;holdTimer=0;
+  const sc=scenes[currentScene];setSubtitle(sc);stopSpeaking();
+  if(isPlaying)speak(sc.text,currentScene);updateSceneButtons()}
+function speakScene(){const sc=scenes[currentScene];setSubtitle(sc);speak(sc.text,currentScene)}
+function startShow(){hasStarted=true;finished=false;isPlaying=true;isPaused=false;
+  setPlayIcon(true);startScene(0)}
+function doPause(){isPaused=true;setPlayIcon(false);
+  if(engine==='webspeech'&&synth)synth.pause();
+  if((engine==='google'||engine==='hf')&&gAudio)gAudio.pause()}
+function doResume(){isPaused=false;setPlayIcon(true);
+  if(engine==='webspeech'&&synth)synth.resume();
+  if((engine==='google'||engine==='hf')&&gAudio)gAudio.play()}
+function togglePlay(){if(!hasStarted){startShow();return}
+  if(!isPlaying){finished=false;isPlaying=true;isPaused=false;setPlayIcon(true);speakScene();return}
+  isPaused?doResume():doPause()}
+function stopShow(){isPlaying=false;isPaused=false;finished=false;setPlayIcon(false);
+  stopSpeaking();currentScene=0;sceneTime=0;holdTimer=0;
+  subtitleEl.style.opacity='0';updateSceneButtons()}
+function seekScene(i){i=clamp(i,0,scenes.length-1);stopSpeaking();finished=false;
+  currentScene=i;sceneTime=0;holdTimer=0;updateSceneButtons();
+  if(isPlaying&&!isPaused)speakScene();else setSubtitle(scenes[i])}
+function seekTime(T){let i=0;while(i<scenes.length-1&&T>=cum[i+1])i++;
+  stopSpeaking();finished=false;currentScene=i;sceneTime=T-cum[i];holdTimer=0;
+  updateSceneButtons();if(isPlaying&&!isPaused)speakScene();else setSubtitle(scenes[i])}
+
+/* ================= ОБРОБНИКИ ================= */
+btnPlay.onclick=togglePlay;
+btnStop.onclick=stopShow;
+btnNext.onclick=()=>seekScene(currentScene+1);
+btnPrev.onclick=()=>seekScene(currentScene-1);
+progressZone.onclick=e=>{const r=progressZone.getBoundingClientRect();
+  seekTime(clamp((e.clientX-r.left)/r.width,0,1)*TOTAL)};
+engineSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{userPicked=true;
+  engine=b.dataset.e;updateEngineUI();stopSpeaking();if(engine==='hf')hfEnsure();
+  if(isPlaying&&!isPaused)speakScene()});
+speedSel.onchange=()=>{speed=parseFloat(speedSel.value)};
+chkSubs.onchange=()=>{if(!chkSubs.checked)subtitleEl.style.opacity='0';
+  else setSubtitle(scenes[currentScene])};
+chkDebug.onchange=()=>{debugSection.style.display=chkDebug.checked?'block':'none'};
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'){e.preventDefault();togglePlay()}
+  else if(e.code==='ArrowRight')seekScene(currentScene+1);
+  else if(e.code==='ArrowLeft')seekScene(currentScene-1);
+  else if(e.code==='KeyR')stopShow()});
+canvas.addEventListener('click',()=>{if(!hasStarted)startShow()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)lastTs=performance.now()});
+
+/* ================= ЗАСІЧКИ / ДЕБАГ ================= */
+const tickEls=[];
+scenes.forEach((sc,i)=>{const t=document.createElement('div');t.className='tick';
+  t.style.left=(cum[i]/TOTAL*100)+'%';t.title=(i+1)+'. '+sc.tick+' ('+sc.dur+' с)';
+  t.onclick=e=>{e.stopPropagation();seekScene(i)};ticksLayer.appendChild(t);tickEls.push(t);
+  const l=document.createElement('div');l.className='tick-label';l.style.left=(cum[i]/TOTAL*100)+'%';
+  l.textContent=sc.tick;ticksLayer.appendChild(l)});
+function updateLabelsVis(){ticksLayer.querySelectorAll('.tick-label').forEach(l=>
+  l.style.display=chkLabels.checked?'':'none')}
+chkLabels.onchange=updateLabelsVis;updateLabelsVis();
+scenes.forEach((sc,i)=>{const b=document.createElement('button');
+  b.textContent=fmt(cum[i])+' · '+sc.tick;b.onclick=()=>seekScene(i);
+  sceneListEl.appendChild(b)});
+function updateSceneButtons(){sceneListEl.querySelectorAll('button').forEach((b,i)=>
+  b.classList.toggle('active',i===currentScene));
+  sceneIndicator.textContent=(currentScene+1)+'/'+scenes.length+' · '+scenes[currentScene].tick}
+function fmt(s){s=Math.floor(s);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function updateHud(){const sc=scenes[currentScene];
+  const cur=cum[currentScene]+Math.min(sceneTime,sc.dur);
+  progressFill.style.width=(cur/TOTAL*100)+'%';
+  timeDisp.textContent=fmt(cur)+' / '+fmt(TOTAL);
+  tickEls.forEach((t,i)=>t.classList.toggle('active',i===currentScene));
+  voiceState.textContent=(engine==='none'?'🔇':(ttsActive?'🔊':'🔈'))+(hfMsg?' '+hfMsg:'');
+  voiceState.classList.toggle('active',ttsActive)}
+updateSceneButtons();
+
+/* ================= ГОЛОВНИЙ ЦИКЛ ================= */
+let lastTs=performance.now();
+function overlayStart(){ctx.fillStyle='rgba(8,12,26,.55)';ctx.fillRect(0,0,W,H);
+  const pu=1+0.05*Math.sin(performance.now()/300);
+  ctx.save();ctx.translate(W/2,H/2-30);ctx.scale(pu,pu);
+  ctx.beginPath();ctx.arc(0,0,54,0,TAU);ctx.fillStyle='rgba(255,255,255,.95)';ctx.fill();
+  ctx.strokeStyle='#e11d48';ctx.lineWidth=5;ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-14,-22);ctx.lineTo(-14,22);ctx.lineTo(24,0);ctx.closePath();
+  ctx.fillStyle='#e11d48';ctx.fill();ctx.restore();
+  fnt(22,true);ctx.fillStyle='#fff';txt('Натисніть, щоб дивитись з озвученням',W/2,H/2+70);
+  fnt(15);ctx.fillStyle='rgba(255,255,255,.85)';
+  txt('Space — пауза · ←/→ — сцени · клік по шкалі — перемотка',W/2,H/2+102)}
+
+function frame(ts){const rawDt=Math.min(0.1,(ts-lastTs)/1000);lastTs=ts;
+  if(isPlaying&&!isPaused&&!(engine==='hf'&&hfWait)){const dt=rawDt*speed;globalTime+=dt;sceneTime+=dt;
+    const sc=scenes[currentScene];
+    const animDone=sceneTime>=sc.dur;
+    const voiceOK=engine==='none'||ttsDone||sceneTime>sc.dur+(engine==='webspeech'?30:60);
+    if(animDone&&voiceOK){holdTimer+=dt;
+      if(holdTimer>=0.7){
+        if(currentScene<scenes.length-1)startScene(currentScene+1);
+        else{finished=true;isPlaying=false;isPaused=false;setPlayIcon(false);stopSpeaking()}}}
+    else holdTimer=0}
+  gtNow=globalTime; /* критично: мерехтіння ліхтарів, курсор, шеврони, сніг */
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#fbf7f0');g.addColorStop(1,'#f2ebdd');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  scenes[currentScene].draw(W,H,sceneTime,globalTime);
+  const f=1-stag(sceneTime,0,0.45);
+  if(f>0&&hasStarted){ctx.fillStyle='rgba(251,247,240,'+f*0.6+')';ctx.fillRect(0,0,W,H)}
+  if(hasStarted&&engine==='hf'&&hfWait){ctx.fillStyle='rgba(30,30,30,.75)';ctx.font='bold 16px Arial';ctx.textAlign='left';ctx.fillText('Готую озвучення…',16,H-16)}
+  if(!hasStarted)overlayStart();
+  updateHud();
+  requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
