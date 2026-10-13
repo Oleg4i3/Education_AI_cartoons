@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Без Referer: на GitHub Pages неофіційний Google TTS інакше відхиляє запити (з file:// Referer не надсилається) -->
+<meta name="referrer" content="no-referrer">
+<title>Мережі Штейнера — анімована презентація</title>
+<style>
+:root{--bg:#f6f1e7;--txt:#2c2416;--mut:#6b5d4f;--red:#e11d48}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Georgia,'Times New Roman',serif;background:var(--bg);color:var(--txt);
+  display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:18px}
+.container{width:100%;max-width:1240px;display:flex;flex-direction:column}
+.presentation{width:100%;aspect-ratio:16/9;background:#fff;border:2px solid #d4cfc7;
+  border-radius:10px 10px 0 0;position:relative;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+canvas{width:100%;height:100%;display:block;cursor:pointer}
+.scene-indicator{position:absolute;top:14px;right:14px;background:rgba(30,64,175,.92);color:#fff;
+  padding:5px 12px;border-radius:5px;font-size:13px;font-weight:bold;pointer-events:none}
+.subtitle{position:absolute;left:0;right:0;bottom:10px;width:100%;box-sizing:border-box;
+  padding:0 4%;background:transparent;color:#fff;font-weight:bold;
+  font-size:clamp(15px,2.1vw,26px);text-align:center;line-height:1.4;
+  text-shadow:0 0 3px #000,0 0 6px #000,0 2px 5px rgba(0,0,0,.95),0 0 12px rgba(0,0,0,.7);
+  transition:opacity .3s;pointer-events:none}
+.controls{background:linear-gradient(#241c15,#15100b);border-radius:0 0 10px 10px;padding:6px 14px 12px}
+.progress-zone{position:relative;height:40px;cursor:pointer}
+.progress-track{position:absolute;left:0;right:0;top:15px;height:5px;background:rgba(255,255,255,.16);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;width:0;background:linear-gradient(90deg,#e11d48,#f43f5e);border-radius:3px}
+.tick{position:absolute;top:11px;width:3px;height:13px;background:rgba(255,255,255,.45);border-radius:2px;transform:translateX(-1px)}
+.tick:hover{background:#fff}
+.tick.active{background:#fbbf24;box-shadow:0 0 6px #fbbf24}
+.tick-label{position:absolute;top:27px;transform:translateX(-50%);font-size:10px;color:rgba(255,255,255,.62);
+  white-space:nowrap;pointer-events:none;font-family:Arial,sans-serif}
+.btn-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.ctl{background:transparent;border:none;cursor:pointer;width:34px;height:34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;transition:background .2s}
+.ctl:hover{background:rgba(255,255,255,.12)}
+.ctl svg{width:19px;height:19px;fill:#fff}
+.time{color:#fff;font:13px Arial;margin-left:4px;min-width:96px}
+.seg{display:flex;border:1px solid rgba(255,255,255,.18);border-radius:7px;overflow:hidden}
+.seg button{background:transparent;border:none;color:#cfc7ba;padding:5px 10px;font:12px Arial;cursor:pointer}
+.seg button+button{border-left:1px solid rgba(255,255,255,.14)}
+.seg button.on{background:var(--red);color:#fff}
+select{background:#2a221b;color:#eee;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px 6px;font:12px Arial}
+.chk{display:flex;align-items:center;gap:5px;color:#d9d2c5;font:13px Arial;cursor:pointer;user-select:none}
+.chk input{accent-color:var(--red);width:15px;height:15px;cursor:pointer}
+.voice{margin-left:auto;color:#fff;font:15px Arial;background:rgba(255,255,255,.1);border-radius:5px;padding:3px 9px}
+.voice.active{animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.45}}
+.debug-section{margin-top:14px;background:#fff;border:2px solid #d4cfc7;border-radius:8px;padding:14px}
+.debug-section h3{font-size:14px;color:var(--mut);margin-bottom:10px}
+.scene-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:7px}
+.scene-list button{padding:7px;border:2px solid #d4cfc7;border-radius:6px;background:#fff;color:var(--txt);
+  font:12px Georgia;cursor:pointer;text-align:left}
+.scene-list button:hover{border-color:#1e40af}
+.scene-list button.active{background:#1e40af;color:#fff;border-color:#1e40af}
+/* ---- гра «Чарівне слово» ---- */
+#gameLayer{--gb:#2563eb;--gr:#dc2626;position:absolute;inset:0;display:none;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);
+  gap:calc(12px*var(--k,1));padding:calc(12px*var(--k,1));background:linear-gradient(#fbf7f0,#f2ebdd);
+  font-family:Georgia,'Times New Roman',serif;color:var(--txt)}
+#gameLayer.on{display:grid}
+.g-graph{position:relative;min-width:0;min-height:0}
+#gameCanvas{width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+.g-busy{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-size:calc(22px*var(--k,1));
+  font-weight:bold;color:var(--mut);background:rgba(251,247,240,.85)}
+.g-panel{min-width:0;min-height:0;overflow:auto;background:rgba(255,255,255,.93);border:2px solid #d4cfc7;
+  border-radius:calc(12px*var(--k,1));padding:calc(12px*var(--k,1)) calc(16px*var(--k,1));display:flex;flex-direction:column;
+  gap:calc(9px*var(--k,1));box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.g-title{font-size:calc(26px*var(--k,1));font-weight:bold;line-height:1.15}
+.g-title:after{content:'';display:block;width:calc(90px*var(--k,1));height:3px;background:var(--red);margin-top:calc(6px*var(--k,1))}
+.g-task{font-size:calc(17px*var(--k,1));line-height:1.4}
+.g-task .g-t{display:inline-block;min-width:1.8em;text-align:center;background:#f59e0b;color:#fff;border-radius:999px;padding:0 .35em;font-weight:bold}
+.g-slots{display:flex;gap:calc(10px*var(--k,1));justify-content:center;margin:calc(2px*var(--k,1)) 0}
+.g-slot{width:calc(52px*var(--k,1));height:calc(52px*var(--k,1));border:2px dashed #cbbfae;border-radius:50%;display:flex;
+  align-items:center;justify-content:center;font-size:calc(22px*var(--k,1));font-weight:bold;color:#fff;transition:transform .15s}
+.g-slot.f{border:3px solid rgba(15,23,42,.35)}
+.g-slot.f.B{background:var(--gb)}.g-slot.f.R{background:var(--gr)}
+.g-slot.act{transform:scale(1.18);box-shadow:0 0 0 4px rgba(251,191,36,.7)}
+.g-keys{display:flex;gap:calc(10px*var(--k,1));justify-content:center}
+.g-key{width:calc(54px*var(--k,1));height:calc(54px*var(--k,1));border-radius:50%;border:3px solid rgba(15,23,42,.25);
+  font:bold calc(22px*var(--k,1)) Georgia,serif;cursor:pointer;color:#fff;background:#64748b}
+.g-key.b{background:var(--gb)}.g-key.r{background:var(--gr)}
+.g-key.s{font-size:calc(18px*var(--k,1));background:#e7e1d6;color:#4a3f2e}
+.g-key:hover:not(:disabled){filter:brightness(1.1)}.g-key:active:not(:disabled){transform:scale(.94)}
+.g-key:disabled{opacity:.4;cursor:default}
+.g-row{display:flex;gap:calc(8px*var(--k,1));flex-wrap:wrap;justify-content:center;align-items:center}
+.g-go{background:var(--red);color:#fff;border:none;border-radius:calc(9px*var(--k,1));padding:calc(9px*var(--k,1)) calc(26px*var(--k,1));
+  font:bold calc(18px*var(--k,1)) Georgia,serif;cursor:pointer;box-shadow:0 3px 0 #9f1239}
+.g-go:disabled{opacity:.45;cursor:default;box-shadow:none}
+.g-alt{background:#fff;border:2px solid #d4cfc7;border-radius:calc(9px*var(--k,1));padding:calc(7px*var(--k,1)) calc(12px*var(--k,1));
+  font:calc(13px*var(--k,1)) Georgia,serif;color:var(--txt);cursor:pointer}
+.g-alt:hover:not(:disabled){border-color:#1e40af}.g-alt:disabled{opacity:.45;cursor:default}
+.g-status{font-size:calc(15px*var(--k,1));line-height:1.4;min-height:calc(64px*var(--k,1));color:#4a3f2e}
+.g-status.win{color:#15803d;font-weight:bold}
+.g-status .cb,.g-slot .cb{color:var(--gb)}.g-status .cr{color:var(--gr)}
+.g-settings{margin-top:auto;display:flex;flex-wrap:wrap;gap:calc(8px*var(--k,1)) calc(14px*var(--k,1));align-items:center;
+  font-size:calc(13px*var(--k,1));color:var(--mut);border-top:1px solid #e7e1d6;padding-top:calc(8px*var(--k,1))}
+.g-seg{display:inline-flex;border:1px solid #d4cfc7;border-radius:7px;overflow:hidden;vertical-align:middle;margin-left:4px}
+.g-seg button{background:#fff;border:none;padding:calc(4px*var(--k,1)) calc(9px*var(--k,1));font:calc(13px*var(--k,1)) Georgia,serif;cursor:pointer;color:var(--txt)}
+.g-seg button+button{border-left:1px solid #d4cfc7}
+.g-seg button.on{background:#1e40af;color:#fff}
+.g-seg button.on{background:#1e40af;color:#fff}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="presentation">
+    <canvas id="canvas"></canvas>
+    <div id="gameLayer">
+      <div class="g-graph"><canvas id="gameCanvas"></canvas><div class="g-busy" id="gBusy"></div></div>
+      <div class="g-panel">
+        <div class="g-title">Гра: мережа Штейнера</div>
+        <div class="g-task" id="gTask">Клацніть — з'явиться точка Штейнера; тягніть її; клацніть по точці — зникне. «Натягнути» вирівнює ланцюжки, як у Торічеллі. Кути в точках мають бути по 120°.</div>
+        <div class="g-row"><button class="g-go" id="gRelax">Натягнути</button><button class="g-alt" id="gReset">Скинути</button><button class="g-alt" id="gAns">Показати відповідь</button></div>
+        <div class="g-status" id="gStatus"></div>
+        <div class="g-settings"><span>Задача:<span class="g-seg" id="gSegP"><button data-v="sq">квадрат</button><button data-v="lad">драбина 2×3</button><button data-v="grid">сітка 3×3</button></span></span></div>
+      </div>
+    </div>
+    <div class="scene-indicator" id="sceneIndicator"></div>
+    <div class="subtitle" id="subtitle" style="opacity:0"></div>
+  </div>
+
+  <div class="controls">
+    <div class="progress-zone" id="progressZone">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div id="ticksLayer"></div>
+    </div>
+    <div class="btn-row">
+      <button class="ctl" id="btnPlay" title="Грати / Пауза (Space)"><span id="icoPlay"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span><span id="icoPause" style="display:none"><svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg></span></button>
+      <button class="ctl" id="btnStop" title="Спочатку (R)"><svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg></button>
+      <button class="ctl" id="btnPrev" title="Попередня сцена (←)"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+      <button class="ctl" id="btnNext" title="Наступна сцена (→)"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+      <span class="time" id="timeDisp">0:00 / 0:00</span>
+      <div class="seg" id="engineSeg" title="Рушій озвучення">
+        <button data-e="hf" title="Українська нейромережа (безкоштовне демо на Hugging Face)">UA нейро</button>
+        <button data-e="webspeech">Web Speech</button>
+        <button data-e="google" class="on">Google TTS</button>
+        <button data-e="none">Тихо</button>
+      </div>
+      <select id="hfVoice" title="Голос (для UA нейро)"><option value="Тетяна (жіночий) 👩">Тетяна</option><option value="Лада (жіночий) 👩" selected>Лада</option><option value="Дмитро (чоловічий) 👨">Дмитро</option><option value="Микита (чоловічий) 👨">Микита</option><option value="Олекса (чоловічий) 👨">Олекса</option></select>
+      <select id="speedSel" title="Швидкість">
+        <option value="0.75">0.75×</option><option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option><option value="1.5">1.5×</option>
+      </select>
+      <label class="chk"><input type="checkbox" id="chkSubs"><span>Субтитри</span></label>
+      <label class="chk"><input type="checkbox" id="chkLabels" checked><span>Назви сцен</span></label>
+      <label class="chk"><input type="checkbox" id="chkDebug"><span>Дебаг</span></label>
+      <span class="voice" id="voiceState">🔈</span>
+    </div>
+  </div>
+
+  <div class="debug-section" id="debugSection" style="display:none">
+    <h3>🔧 Перейти до сцени</h3>
+    <div class="scene-list" id="sceneList"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================= БАЗА ================= */
+const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d');
+const subtitleEl=document.getElementById('subtitle'),sceneIndicator=document.getElementById('sceneIndicator');
+const progressZone=document.getElementById('progressZone'),progressFill=document.getElementById('progressFill');
+const timeDisp=document.getElementById('timeDisp'),voiceState=document.getElementById('voiceState');
+const ticksLayer=document.getElementById('ticksLayer'),sceneListEl=document.getElementById('sceneList');
+const debugSection=document.getElementById('debugSection');
+const chkSubs=document.getElementById('chkSubs'),chkLabels=document.getElementById('chkLabels'),chkDebug=document.getElementById('chkDebug');
+const btnPlay=document.getElementById('btnPlay'),btnStop=document.getElementById('btnStop'),
+      btnPrev=document.getElementById('btnPrev'),btnNext=document.getElementById('btnNext'),
+      icoPlay=document.getElementById('icoPlay'),icoPause=document.getElementById('icoPause'),
+      speedSel=document.getElementById('speedSel'),engineSeg=document.getElementById('engineSeg');
+
+let W=0,H=0,K=1,DPR=1;
+function resize(){const r=canvas.getBoundingClientRect();DPR=window.devicePixelRatio||1;
+  W=r.width;H=r.height;canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);
+  K=Math.max(.6,Math.min(1.1,W/1150));}
+window.addEventListener('resize',resize);resize();
+
+const TAU=Math.PI*2;
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const lerp2=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t)];
+const eo=t=>1-Math.pow(1-t,3);
+const eio=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const eob=t=>{const c=1.70158;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2)};
+const stag=(t,s,d)=>clamp((t-s)/d,0,1);
+const rnd=i=>{const x=Math.sin(i*127.1+311.7)*43758.5453;return x-Math.floor(x)};
+const BLUE='#2563eb',RED='#dc2626';
+let gtNow=0;
+function fnt(px,bold){ctx.font=(bold?'bold ':'')+Math.round(px*K)+'px Georgia,"Times New Roman",serif'}
+function fntE(px){ctx.font=Math.round(px*K)+'px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif'}
+function txt(t,x,y,al){ctx.textAlign=al||'center';ctx.fillText(t,x,y)}
+function rr(x,y,w,h,r){r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+function card(x,y,w,h){ctx.fillStyle='rgba(255,255,255,.93)';rr(x,y,w,h,10*K);ctx.fill();
+  ctx.strokeStyle='#d4cfc7';ctx.lineWidth=1.5*K;ctx.stroke()}
+function chip(text,x,y,al,col){col=col||'#1e40af';if(al<=0)return;ctx.globalAlpha=al;fnt(16,true);
+  const tw=ctx.measureText(text).width;ctx.fillStyle='rgba(255,255,255,.95)';rr(x-tw/2-10*K,y-14*K,tw+20*K,26*K,7*K);ctx.fill();
+  ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.stroke();ctx.fillStyle=col;txt(text,x,y+5*K);ctx.globalAlpha=1}
+function stamp(text,x,y,size,color,st,t0,rot){const p=eob(stag(st,t0,0.45));if(p<=0)return;
+  ctx.save();ctx.translate(x,y);ctx.rotate((rot||-0.1)*(1-p*.5));ctx.scale(p,p);
+  fnt(size,true);const w2=ctx.measureText(text).width+36*K;
+  ctx.fillStyle='rgba(255,255,255,.93)';rr(-w2/2,-size*.72*K,w2,size*1.44*K,10*K);ctx.fill();
+  ctx.strokeStyle=color;ctx.lineWidth=3*K;ctx.stroke();ctx.fillStyle=color;txt(text,0,size*.34*K);ctx.restore()}
+function shock(x,y,st,t0,color,R){R=R||180;const u=stag(st,t0,0.9);if(u<=0||u>=1)return;
+  ctx.strokeStyle=color;ctx.globalAlpha=(1-u)*.8;ctx.lineWidth=(4*(1-u)+1)*K;
+  ctx.beginPath();ctx.arc(x,y,u*R*K,0,TAU);ctx.stroke();ctx.globalAlpha=1}
+function confetti(x,y,st,t0,n){for(let i=0;i<n;i++){const u=(st-t0)-i*.012;if(u<0||u>2.6)continue;
+  const a=rnd(i)*TAU,v=(110+rnd(i+50)*170)*K,dx=Math.cos(a)*v*u*.6,dy=Math.sin(a)*v*u*.6+140*K*u*u;
+  ctx.globalAlpha=clamp(1-u/2.6,0,1);ctx.fillStyle=[BLUE,RED,'#eab308','#16a34a'][i%4];
+  ctx.beginPath();ctx.arc(x+dx,y+dy,3.5*K,0,TAU);ctx.fill()}ctx.globalAlpha=1}
+function typeText(text,st,t0){const n=Math.floor(Math.max(0,(st-t0))*30);if(n<=0)return null;
+  return text.slice(0,n)+(n<text.length&&Math.floor(gtNow*3)%2?'▌':'')}
+function caption(text,st,t0,y){const shown=typeText(text,st,t0);if(!shown)return;
+  fnt(19);const tw=ctx.measureText(text).width;
+  ctx.fillStyle='rgba(255,255,255,.88)';rr(W/2-tw/2-14,y-24*K,tw+28,34*K,8);ctx.fill();
+  ctx.strokeStyle='#d4cfc7';ctx.lineWidth=1;ctx.stroke();ctx.fillStyle='#4a3f2e';txt(shown,W/2,y)}
+function sceneTitle(t,st,col){col=col||'#2c2416';const p=eob(stag(st,0.1,0.6));if(p>0){
+  ctx.save();ctx.translate(W/2,44);ctx.scale(Math.max(.001,p),Math.max(.001,p));
+  fnt(30,true);ctx.fillStyle=col;txt(t,0,0);ctx.restore()}
+  const u=eo(stag(st,0.4,0.5));if(u>0){ctx.strokeStyle='#e11d48';ctx.lineWidth=3*K;ctx.beginPath();
+  ctx.moveTo(W/2-95*K*u,56);ctx.lineTo(W/2+95*K*u,56);ctx.stroke()}}
+function arrowHead(x,y,ang,size,col,a){if(a<=0)return;ctx.save();ctx.translate(x,y);ctx.rotate(ang);ctx.globalAlpha=a;
+  ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(-size,-size*0.7);ctx.lineTo(size*0.6,0);ctx.lineTo(-size,size*0.7);ctx.closePath();ctx.fill();ctx.restore()}
+function curveArrow(x1,y1,x2,y2,bend,col,pop,lw){if(pop<=0)return;const mx=(x1+x2)/2,my=(y1+y2)/2;
+  const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy)||1;const nx=-dy/len,ny=dx/len;
+  const cx2=mx+nx*bend,cy2=my+ny*bend;
+  ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.lineCap='round';ctx.globalAlpha=pop;
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.quadraticCurveTo(cx2,cy2,x2,y2);ctx.stroke();
+  arrowHead(x2,y2,Math.atan2(y2-cy2,x2-cx2),8*K,col,pop);ctx.globalAlpha=1}
+function heart(x,y,s,a){ctx.save();ctx.translate(x,y);ctx.scale(s/8,s/8);ctx.globalAlpha=a;
+  ctx.fillStyle='#ec4899';ctx.beginPath();ctx.moveTo(0,4);ctx.bezierCurveTo(-6,-2,-3,-8,0,-3);
+  ctx.bezierCurveTo(3,-8,6,-2,0,4);ctx.fill();ctx.restore()}
+function hearts(x,y,st,t0,n){for(let i=0;i<n;i++){const u=st-t0-i*0.5;if(u<0||u>2.4)continue;
+  heart(x+Math.sin(u*5+i*2)*12*K,y-14*K-u*50*K,(1.6+(i%2)*0.8)*K*2.2,clamp(1-u/2.4,0,1)*0.9)}}
+function popWrap(x,y,p,fn){if(p<=0)return;ctx.save();ctx.translate(x,y);ctx.scale(p,p);ctx.translate(-x,-y);fn();ctx.restore()}
+function pointer(x1,y1,x2,y2,st,t0){const u=stag(st,t0,0.4);if(u<=0)return;
+  ctx.globalAlpha=u;ctx.strokeStyle='#94a3b8';ctx.lineWidth=1.6;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#94a3b8';ctx.beginPath();ctx.arc(x2,y2,3.5*K,0,TAU);ctx.fill();ctx.globalAlpha=1}
+function wordChips(cx,cy,word,st,t0,active,doneN,sc){sc=sc||1;const n=word.length,gap=54*K*sc;const x0=cx-(n-1)*gap/2;
+  word.forEach((L,i)=>{const p=eob(stag(st,t0+i*0.3,0.4));if(p<=0)return;
+    const x=x0+i*gap,col=(L==='B')?BLUE:RED,act=(i===active);
+    const sc2=act?(1+0.1*Math.sin(gtNow*6)):1;
+    ctx.save();ctx.translate(x,cy);ctx.scale(sc*sc2*p,sc*sc2*p);
+    ctx.beginPath();ctx.arc(0,0,16*K,0,TAU);ctx.fillStyle=col;ctx.fill();
+    ctx.strokeStyle=act?'#fff':'rgba(15,23,42,.35)';ctx.lineWidth=act?3:1.5;ctx.stroke();
+    if(act){ctx.globalAlpha=0.5+0.3*Math.sin(gtNow*7);ctx.beginPath();ctx.arc(0,0,23*K,0,TAU);
+      ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();ctx.globalAlpha=1}
+    fnt(15,true);ctx.fillStyle='#fff';txt(L==='B'?'С':'Ч',0,5.5*K);
+    if(i<doneN){fnt(13,true);ctx.fillStyle='#22c55e';txt('✓',13*K,-13*K)}
+    ctx.restore()})}
+function waves(x,y,st,t0,col){if(st<t0)return;const u0=st-t0;
+  for(let k=0;k<3;k++){const u=(u0*1.1-k*0.33)%1;if(u<0)continue;
+    ctx.globalAlpha=(1-u)*0.8;ctx.strokeStyle=col;ctx.lineWidth=2*K;
+    ctx.beginPath();ctx.arc(x,y,(6+u*20)*K,-0.9,0.9);ctx.stroke()}ctx.globalAlpha=1}
+function drawWalkerDot(x,y,col){ctx.beginPath();ctx.arc(x,y-10*K,9*K,0,TAU);ctx.fillStyle=col;ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle='#1f2937';ctx.beginPath();ctx.arc(x-3*K,y-12*K,1.4*K,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.arc(x+3*K,y-12*K,1.4*K,0,TAU);ctx.fill()}
+
+/* ================= ГЕРОЇ ================= */
+function drawGirl(x,y,s,mode,gt){ctx.save();ctx.translate(x,y);ctx.scale(s/K*0.001*K,s/K*0.001*K);ctx.restore();
+  ctx.save();ctx.translate(x,y);ctx.scale(s/K,s/K);ctx.scale(K,K);ctx.scale(1/K,1/K);ctx.restore();
+  ctx.save();ctx.translate(x,y);ctx.scale(s,s);
+  const shiv=(mode==='cold'||mode==='call')?Math.sin(gt*22)*1.2:0;
+  ctx.translate(shiv,0);
+  const walk=(mode==='walk')?Math.sin(gt*9):0;
+  const bob=(mode==='walk')?Math.abs(Math.cos(gt*9))*2:0;
+  ctx.strokeStyle='#31405c';ctx.lineWidth=4;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(0,-12+bob);ctx.lineTo(-3+walk*4,0);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,-12+bob);ctx.lineTo(3-walk*4,0);ctx.stroke();
+  ctx.fillStyle='#5b3a1e';ctx.beginPath();ctx.ellipse(-3+walk*4,1,3.4,2,0,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.ellipse(3-walk*4,1,3.4,2,0,0,TAU);ctx.fill();
+  ctx.fillStyle='#8b5cf6';rr(-8,-26+bob,16,16,4);ctx.fill();
+  ctx.strokeStyle='#4c1d95';ctx.lineWidth=1.2;ctx.stroke();
+  ctx.fillStyle='#f5f0ff';ctx.beginPath();ctx.arc(0,-22+bob,0.9,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.arc(0,-18+bob,0.9,0,TAU);ctx.fill();
+  ctx.strokeStyle='#8b5cf6';
+  if(mode==='call'){ctx.beginPath();ctx.moveTo(-6,-22+bob);ctx.lineTo(-9,-14+bob);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(6,-22+bob);ctx.lineTo(5,-30+bob);ctx.stroke();
+    ctx.fillStyle='#111';rr(4.4,-33+bob,4,7,1.4);ctx.fill()}
+  else if(mode==='happy'){ctx.beginPath();ctx.moveTo(-6,-22+bob);ctx.lineTo(-11,-31+bob);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(6,-22+bob);ctx.lineTo(11,-31+bob);ctx.stroke()}
+  else{ctx.beginPath();ctx.moveTo(-6,-22+bob);ctx.lineTo(-9,-14+bob+walk*2);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(6,-22+bob);ctx.lineTo(9,-14+bob-walk*2);ctx.stroke()}
+  ctx.fillStyle='#ef4444';rr(-6,-28+bob,12,4,2);ctx.fill();
+  const fl=Math.sin(gt*6)*3;ctx.beginPath();ctx.moveTo(4,-26+bob);ctx.lineTo(10+fl,-20+bob);ctx.lineTo(7,-25+bob);ctx.closePath();ctx.fill();
+  const hy=-34+bob;
+  ctx.fillStyle='#ffd9c4';ctx.beginPath();ctx.arc(0,hy,7,0,TAU);ctx.fill();
+  ctx.strokeStyle='#caa08a';ctx.lineWidth=0.8;ctx.stroke();
+    ctx.fillStyle='#f6c945';ctx.beginPath();ctx.arc(0,hy-1.5,7.3,Math.PI*0.95,Math.PI*2.05);ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=0.5;
+  ctx.beginPath();ctx.arc(0,hy-2.5,6.1,Math.PI*1.15,Math.PI*1.75);ctx.stroke();
+  ctx.beginPath();ctx.ellipse(-6.4,hy+4,2,5,0.25,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.ellipse(6.4,hy+4,2,5,-0.25,0,TAU);ctx.fill();
+  const sad=(mode==='cold'||mode==='call');
+  ctx.fillStyle='#2b1c10';
+  ctx.beginPath();ctx.arc(-2.5,hy-0.5,0.9,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.arc(2.5,hy-0.5,0.9,0,TAU);ctx.fill();
+    ctx.strokeStyle='#8a4a3a';ctx.lineWidth=0.55;ctx.beginPath();
+  if(sad)ctx.arc(0,hy+4.4,1.7,Math.PI*1.15,Math.PI*1.85);
+  else ctx.arc(0,hy+2.6,2.1,Math.PI*0.15,Math.PI*0.85);
+  ctx.stroke();
+  if(sad){const tp=(gt*1.6)%1;ctx.globalAlpha=1-tp;ctx.fillStyle='#7cc4ff';
+    ctx.beginPath();ctx.ellipse(-2.5,hy+2+tp*9,1.1,1.8,0,0,TAU);ctx.fill();
+    ctx.beginPath();ctx.ellipse(2.5,hy+2+((tp+0.5)%1)*9,1.1,1.8,0,0,TAU);ctx.fill();ctx.globalAlpha=1}
+  ctx.restore()}
+function drawGuy(x,y,s,mode,gt){ctx.save();ctx.translate(x,y);ctx.scale(s,s);
+  const bob=(mode==='happy')?Math.abs(Math.sin(gt*6))*3:0;
+  ctx.strokeStyle='#26314a';ctx.lineWidth=4.2;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(0,-12);ctx.lineTo(-4,0);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,-12);ctx.lineTo(4,0);ctx.stroke();
+  ctx.fillStyle='#334155';ctx.beginPath();ctx.ellipse(-4,1,3.6,2,0,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.ellipse(4,1,3.6,2,0,0,TAU);ctx.fill();
+  ctx.fillStyle='#1d4ed8';rr(-9,-27-bob,18,17,4);ctx.fill();
+  ctx.strokeStyle='#1e3a8a';ctx.lineWidth=1.2;ctx.stroke();
+  ctx.strokeStyle='#1d4ed8';
+  if(mode==='call'){ctx.beginPath();ctx.moveTo(6,-23-bob);ctx.lineTo(5,-31-bob);ctx.stroke();
+    ctx.fillStyle='#111';rr(4.2,-34-bob,4,7,1.4);ctx.fill();
+    ctx.beginPath();ctx.moveTo(-6,-23-bob);ctx.lineTo(-9,-15-bob);ctx.stroke()}
+  else if(mode==='happy'){ctx.beginPath();ctx.moveTo(-7,-24-bob);ctx.lineTo(-12,-34-bob);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(7,-24-bob);ctx.lineTo(12,-34-bob);ctx.stroke()}
+  else{ctx.beginPath();ctx.moveTo(-6,-23-bob);ctx.lineTo(-11,-16-bob);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(6,-23-bob);ctx.lineTo(11,-16-bob);ctx.stroke();
+    cupDraw(-13*K/s,-16-bob,gt);cupDraw(13*K/s,-16-bob,gt+1.7)}
+  ctx.fillStyle='#f59e0b';rr(-6,-29-bob,12,4,2);ctx.fill();
+  const hy=-35-bob;
+  ctx.fillStyle='#f3c9a5';ctx.beginPath();ctx.arc(0,hy,7,0,TAU);ctx.fill();
+  ctx.strokeStyle='#c79a76';ctx.lineWidth=0.8;ctx.stroke();
+  ctx.fillStyle='#20242b';ctx.beginPath();ctx.arc(0,hy-2,7.2,Math.PI*0.98,Math.PI*2.02);ctx.fill();
+  ctx.fillStyle='#20242b';ctx.beginPath();ctx.arc(-2.5,hy-0.5,0.9,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.arc(2.5,hy-0.5,0.9,0,TAU);ctx.fill();
+  ctx.strokeStyle='#20242b';ctx.lineWidth=1;ctx.beginPath();
+  if(mode==='happy')ctx.arc(0,hy+2.4,2.6,Math.PI*0.15,Math.PI*0.85);
+  else if(mode==='call')ctx.arc(0,hy+4.4,1.8,Math.PI*1.1,Math.PI*1.9);
+  else ctx.arc(0,hy+3.4,2,Math.PI*0.2,Math.PI*0.8);
+  ctx.stroke();ctx.restore()}
+function robot(x,y,ang,gt){ctx.save();ctx.translate(x,y);ctx.rotate(ang);
+  ctx.fillStyle='#5b6779';rr(-16,-13,32,20,6);ctx.fill();
+  ctx.strokeStyle='#333c4d';ctx.lineWidth=1.6;ctx.stroke();
+  ctx.fillStyle='#101826';rr(-11,-8,22,9,4);ctx.fill();
+  ctx.globalAlpha=0.6+0.4*Math.sin(gt*5);ctx.fillStyle='#7dd3fc';
+  ctx.beginPath();ctx.arc(-4,-3.5,1.8,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.arc(4,-3.5,1.8,0,TAU);ctx.fill();ctx.globalAlpha=1;
+  [[-9,10],[9,10]].forEach(w=>{ctx.fillStyle='#1f2733';ctx.beginPath();ctx.arc(w[0],w[1],5,0,TAU);ctx.fill();
+    ctx.strokeStyle='#5b6779';ctx.lineWidth=1.2;ctx.beginPath();
+    ctx.moveTo(w[0]-3.5,w[1]);ctx.lineTo(w[0]+3.5,w[1]);ctx.stroke()});
+  ctx.strokeStyle='#94a3b8';ctx.lineWidth=1.6;ctx.beginPath();ctx.moveTo(0,-13);ctx.lineTo(0,-22);ctx.stroke();
+  ctx.fillStyle=(Math.sin(gt*6)>0)?'#ef4444':'#7f1d1d';ctx.beginPath();ctx.arc(0,-24,2.4,0,TAU);ctx.fill();
+  ctx.restore()}
+function packetDraw(x,y,gt){ctx.save();ctx.translate(x,y);ctx.rotate(Math.sin(gt*10)*0.06);
+  ctx.fillStyle='#fff';rr(-8*K,-6*K,16*K,12*K,2.5*K);ctx.fill();
+  ctx.strokeStyle='#64748b';ctx.lineWidth=1.2;ctx.stroke();
+  ctx.strokeStyle='#94a3b8';ctx.beginPath();ctx.moveTo(-8*K,-6*K);ctx.lineTo(0,1*K);ctx.lineTo(8*K,-6*K);ctx.stroke();ctx.restore()}
+
+/* ================= МЕРЕЖІ ШТЕЙНЕРА ================= */
+const INK='#1e293b',ASP='#475569',GRN='#16a34a',S3=Math.sqrt(3),NMS=['Аркадія','Берегів','Вишнівка','Грозин'],SQP=[[0,0],[1,0],[1,1],[0,1]];
+const sqm=(cx,cy,s)=>p=>[cx+(p[0]-.5)*s,cy+(p[1]-.5)*s],km=x=>Math.round(x*100)+' км';
+function mstE(P){const n=P.length,u=Array(n).fill(false),d=Array(n).fill(1e18),pa=Array(n).fill(-1),E=[];let L=0;d[0]=0;
+  for(let k=0;k<n;k++){let b=-1;for(let i=0;i<n;i++)if(!u[i]&&(b<0||d[i]<d[b]))b=i;u[b]=true;if(pa[b]>=0){E.push([pa[b],b]);L+=d[b]}
+    for(let i=0;i<n;i++)if(!u[i]){const w=Math.hypot(P[b][0]-P[i][0],P[b][1]-P[i][1]);if(w<d[i]){d[i]=w;pa[i]=b}}}return{E,L}}
+function segs(list,m,col,lw,prog,a){let tot=0;list.forEach(l=>tot+=Math.hypot(l[1][0]-l[0][0],l[1][1]-l[0][1]));let acc=0;
+  ctx.strokeStyle=col;ctx.lineWidth=lw*K;ctx.lineCap='round';ctx.globalAlpha=a==null?1:a;
+  list.forEach(l=>{const len=Math.hypot(l[1][0]-l[0][0],l[1][1]-l[0][1]),u=clamp((prog*tot-acc)/len,0,1);acc+=len;if(u<=0)return;
+    const A=m(l[0]),B=m(l[1]);ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.lineTo(lerp(A[0],B[0],u),lerp(A[1],B[1],u));ctx.stroke()});ctx.globalAlpha=1}
+function town(x,y,name,a){if(a<=0)return;popWrap(x,y,eob(a),()=>{ctx.fillStyle='#f59e0b';rr(x-13*K,y-9*K,26*K,18*K,3*K);ctx.fill();
+  ctx.beginPath();ctx.moveTo(x-16*K,y-9*K);ctx.lineTo(x,y-22*K);ctx.lineTo(x+16*K,y-9*K);ctx.closePath();ctx.fillStyle='#b45309';ctx.fill();
+  if(name){fnt(14,true);ctx.fillStyle=INK;txt(name,x,y+28*K)}})}
+function angs(c,nb,a){if(a<=0)return;const an=nb.map(p=>Math.atan2(p[1]-c[1],p[0]-c[0])).sort((u,v)=>u-v);ctx.globalAlpha=a;ctx.strokeStyle='#e11d48';ctx.lineWidth=2.5*K;fnt(13,true);ctx.fillStyle='#e11d48';
+  an.forEach((u,i)=>{let v=an[(i+1)%an.length];if(v<=u)v+=TAU;ctx.beginPath();ctx.arc(c[0],c[1],24*K,u+.15,v-.15);ctx.stroke();const md=(u+v)/2;txt('120°',c[0]+Math.cos(md)*46*K,c[1]+Math.sin(md)*46*K+5*K)});ctx.globalAlpha=1}
+/* 0. Мер */
+function st0(w,h,st,gt){sceneTitle('Мер хоче дороги',st);const s=Math.min(W*.4,H*.62),m=sqm(W*.5,H*.5,s),T0=[9.5,13.5,16.5],
+  VS=[[[[0,0],[0,1]],[[0,1],[1,1]],[[1,1],[1,0]]],[[[0,0],[0,1]],[[1,0],[1,1]],[[0,.5],[1,.5]]],[[[0,0],[1,1]],[[1,0],[0,1]]]],ci=st<T0[0]?-1:st<T0[1]?0:st<T0[2]?1:2;
+  if(ci>=0)segs(VS[ci],m,ASP,9,eo(stag(st,T0[ci],2.4)));
+  SQP.forEach((p,i)=>{const q=m(p);town(q[0],q[1],NMS[i],stag(st,.5+i*.4,.5))});
+  chip('сторона квадрата — 100 км',W*.5,H*.13,stag(st,2,.5),'#64748b');
+  if(ci>=0)chip(['«П» = 300 км','«Н» = 300 км','«Ікс» = 283 км'][ci],W*.5,H*.93,stag(st,T0[ci]+1.5,.4),ci===2?GRN:'#b45309');
+  stamp('А можна ще коротше?',W*.5,H*.5,34,RED,st,22.2,-.04)}
+/* 1. Розщеплення */
+function st1(w,h,st,gt){sceneTitle('Розщепимо центр «Ікса»',st);const s=Math.min(W*.44,H*.66),m=sqm(W*.5,H*.52,s),
+  x=st<3?.5:st<8?lerp(.5,.2887,eio(stag(st,3,5))):st<12?lerp(.2887,.1,eio(stag(st,8,4))):st<17?lerp(.1,.2887,eio(stag(st,12,5))):.2887,
+  a=[x,.5],b=[1-x,.5],L=4*Math.hypot(x,.5)+1-2*x,good=Math.abs(x-.2887)<.004;
+  segs([[[0,0],a],[[0,1],a],[a,b],[[1,0],b],[[1,1],b]],m,ASP,9,1);
+  if(x<.499)[a,b].forEach(p=>{const q=m(p);ctx.beginPath();ctx.arc(q[0],q[1],9*K,0,TAU);ctx.fillStyle=good?GRN:'#8b5cf6';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2*K;ctx.stroke()});
+  SQP.forEach((p,i)=>{const q=m(p);town(q[0],q[1],NMS[i],1)});
+  chip('довжина: '+km(L),W*.5,H*.93,1,good?GRN:'#b45309');
+  angs(m(a),[m([0,0]),m([0,1]),m(b)],stag(st,17,.6));angs(m(b),[m([1,0]),m([1,1]),m(a)],stag(st,17,.6));
+  stamp('−9 % асфальту',W*.5,H*.12,30,GRN,st,20,-.04);chip('● точки Штейнера',W*.5,H*.52+64*K,stag(st,26,.5),'#7c3aed')}
+/* 2. Формалізація */
+function st2(w,h,st,gt){sceneTitle('Задача Штейнера',st);
+  [['Дано: n точок на площині',INK,2],['Знайти: мережу мінімальної довжини',INK,5],['Можна додавати точки Штейнера',GRN,10],['У кожній — три відрізки по 120°',GRN,14],['Їх не більше, ніж n − 2',GRN,20]].forEach((a,i)=>{
+    const p=eob(stag(st,a[2],.5));if(p<=0)return;const y=H*.2+i*H*.14;ctx.globalAlpha=Math.min(1,p);card(W*.04-(1-p)*60,y,W*.46,H*.1);fnt(19,true);ctx.fillStyle=a[1];txt(a[0],W*.27-(1-p)*60,y+H*.062);ctx.globalAlpha=1});
+  const sd=Math.min(W*.3,H*.5),cx=W*.75,cy=H*.46,R=sd/S3,A=[cx-sd/2,cy+R/2],B=[cx+sd/2,cy+R/2],C=[cx,cy-R],O=[cx,cy],id=p=>p;
+  segs([[A,C],[C,B]],id,ASP,8,stag(st,22,2),1-eio(stag(st,26,1)));segs([[A,O],[B,O],[C,O]],id,GRN,8,stag(st,26.5,2));
+  [A,B,C].forEach((p,i)=>town(p[0],p[1],'',stag(st,21,.5)));
+  chip('остовне дерево: 2,00',cx,H*.8,stag(st,24,.5),ASP);chip('Штейнер: 1,73  (−13,4 %)',cx,H*.89,stag(st,28.5,.5),GRN);angs(O,[A,B,C],stag(st,29,.6))}
+/* 3. Стіл Торічеллі */
+const TH=[[.2,.8],[.82,.72],[.5,.1]],KN=(()=>{let p=[.84,.22],v=[0,0];const a=[];for(let i=0;i<1500;i++){let f=[0,0];TH.forEach(q=>{const dx=q[0]-p[0],dy=q[1]-p[1],l=Math.hypot(dx,dy)||1;f[0]+=dx/l;f[1]+=dy/l});
+  v=[(v[0]+f[0]*.004)*.97,(v[1]+f[1]*.004)*.97];p=[p[0]+v[0],p[1]+v[1]];a.push(p)}return a})();
+function chainL(a,b){ctx.save();ctx.setLineDash([5*K,3*K]);ctx.strokeStyle='#334155';ctx.lineWidth=3.2*K;ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();ctx.restore()}
+function poly(pts,col){ctx.fillStyle=col;ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.closePath();ctx.fill()}
+function st3(w,h,st,gt){sceneTitle('Стіл Торічеллі',st);const cx=W*.5,oy=H*.2,tw=W*.6,th=H*.3,tk=22*K,lh=H*.28,sc=v=>.74+.26*v,pr=(u,v)=>[cx+(u-.5)*tw*sc(v),oy+v*th];
+  const BL=pr(0,1),BR=pr(1,1),TR=pr(1,0),TL=pr(0,0),d=(p,dy)=>[p[0],p[1]+dy],pa=Math.min(1,eob(stag(st,.6,.8)));
+  const leg=(u,v)=>{const p=pr(u,v),q=sc(v);ctx.fillStyle='#78350f';ctx.fillRect(p[0]-7*K*q,p[1]+(v>.5?tk:0),14*K*q,lh*q)};
+  ctx.save();ctx.globalAlpha=pa;leg(.04,0);leg(.96,0);ctx.restore();   /* задні ніжки — видно крізь стільницю */
+  const ki=Math.min(KN.length-1,Math.floor(Math.max(0,st-19)*60)),p=KN[ki],kp=pr(p[0],p[1]),dist=TH.map(q=>Math.hypot(q[0]-p[0],q[1]-p[1])),sm=st>31?0:1;
+  TH.forEach((q,i)=>{const hp=pr(q[0],q[1]),wa=eob(stag(st,12+i*.8,.6));if(wa<=0)return;   /* ланцюжки й вантажики — під столом */
+    const dr=40*K+(1.05-dist[i])*tw*.45+Math.sin(st*7+i)*2*K*sm*(st>19?1:0),wy=hp[1]+dr;chainL(hp,[hp[0],wy]);
+    popWrap(hp[0],wy+20*K,wa,()=>{const g=ctx.createLinearGradient(hp[0]-17*K,0,hp[0]+17*K,0);g.addColorStop(0,'#cbd5e1');g.addColorStop(1,'#475569');ctx.fillStyle=g;rr(hp[0]-17*K,wy,34*K,40*K,5*K);ctx.fill();
+      ctx.strokeStyle='#1e293b';ctx.lineWidth=2*K;ctx.stroke();fnt(16,true);ctx.fillStyle=INK;txt('m',hp[0],wy+26*K)})});
+  ctx.save();ctx.globalAlpha=pa;poly([BL,BR,d(BR,tk),d(BL,tk)],'rgba(146,64,14,.8)');poly([TL,TR,BR,BL],'rgba(224,176,104,.55)');ctx.strokeStyle='rgba(120,53,15,.9)';ctx.lineWidth=2*K;ctx.stroke();
+  leg(.04,1);leg(.96,1);ctx.restore();                                  /* півпрозора стільниця, передні ніжки */
+  TH.forEach((q,i)=>{const hp=pr(q[0],q[1]),ha=stag(st,9+i*.6,.5);if(ha>0){ctx.fillStyle='#3b2a0e';ctx.beginPath();ctx.ellipse(hp[0],hp[1],17*K*ha*sc(q[1]),7*K*ha,0,0,TAU);ctx.fill()}if(st>14)chainL(kp,hp)});
+  if(st>14){popWrap(kp[0],kp[1],eob(stag(st,14,.5)),()=>{ctx.beginPath();ctx.arc(kp[0],kp[1],8*K,0,TAU);ctx.fillStyle=RED;ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2*K;ctx.stroke()});
+    chip('сума відстаней: '+((dist[0]+dist[1]+dist[2])*100).toFixed(1)+' см',W*.5,H*.95,1,ASP)}
+  stamp('3 × 120° — мінімум!',W*.74,H*.1,30,GRN,st,31.5,-.04)}
+/* 4. Узагальнення */
+const PT=[0,1,2,3,4].map(k=>{const a=Math.PI/2+TAU*k/5;return[Math.cos(a),-Math.sin(a)]}),PS=[[-.5878,-.0993],[.5878,-.0993],[0,-.4386]];
+function st4(w,h,st,gt){sceneTitle('Узагальнення Штейнера',st);const R=Math.min(W*.3,H*.36),cx=W*.5,cy=H*.54,m=p=>[cx+p[0]*R,cy+p[1]*R],P2=PT.concat(PS),
+  la=mstE(PT).E.map(e=>[PT[e[0]],PT[e[1]]]),lb=mstE(P2).E.map(e=>[P2[e[0]],P2[e[1]]]);
+  segs(la,m,ASP,8,stag(st,8,3),1-eio(stag(st,19,1)));segs(lb,m,GRN,8,stag(st,16,3));
+  PT.forEach((p,i)=>{const q=m(p);town(q[0],q[1],'',stag(st,5+i*.4,.5))});
+  if(st>16.5)PS.forEach(p=>{const q=m(p);popWrap(q[0],q[1],eob(stag(st,16.5,.4)),()=>{ctx.beginPath();ctx.arc(q[0],q[1],9*K,0,TAU);ctx.fillStyle=GRN;ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2*K;ctx.stroke()})});
+  chip('без точок Штейнера: 4,70',W*.3,H*.93,stag(st,11.5,.5),ASP);chip('з трьома точками Штейнера: 4,57  (−2,7 %)',W*.7,H*.93,stag(st,20,.5),GRN);
+  stamp('економія ≤ 13,4 %',W*.8,H*.2,28,RED,st,24.5,-.04)}
+/* 4б. Крускал */
+const KP=[[.12,.3],[.34,.42],[.2,.7],[.78,.22],[1.0,.4],[.8,.62],[1.45,.45]],
+KS=(()=>{const n=7,E=[];for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)E.push([i,j,Math.hypot(KP[i][0]-KP[j][0],KP[i][1]-KP[j][1])]);E.sort((a,b)=>a[2]-b[2]);
+  const par=[0,1,2,3,4,5,6],f=x=>par[x]===x?x:(par[x]=f(par[x])),S=[];let c=0;
+  for(const e of E){const a=f(e[0]),b=f(e[1]),ok=a!==b;if(ok){par[a]=b;c++}S.push({a:e[0],b:e[1],l:e[2],ok,rt:par.map((_,i)=>f(i))});if(c===n-1)break}return S})();
+function stK(w,h,st,gt){sceneTitle('Остовне дерево: Крускал',st);const mh=H*.58,mw=Math.min(W*.56,mh*1.6),mx=W*.05,my=H*.24,m=p=>[mx+p[0]/1.6*mw,my+p[1]*mh],T0=8,dt=1,q=(st-T0)/dt,n=Math.floor(q),
+  idx=Math.min(n,KS.length-1),fr=q-n,end=n>=KS.length,rt=n>=0?KS[idx].rt:[0,1,2,3,4,5,6],ABC='ABCDEFG',endT=T0+KS.length*dt;let tot=0;
+  for(let j=0;n>=0&&j<=idx;j++)if(KS[j].ok){tot+=KS[j].l;const A=m(KP[KS[j].a]),B=m(KP[KS[j].b]);ctx.strokeStyle=GRN;ctx.lineWidth=6*K;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.lineTo(B[0],B[1]);ctx.stroke()}
+  if(n>=0&&!end&&fr<.75){const s=KS[idx],A=m(KP[s.a]),B=m(KP[s.b]);ctx.strokeStyle=s.ok?'#f97316':RED;ctx.lineWidth=(s.ok?8:5)*K;ctx.setLineDash(s.ok?[]:[8*K,6*K]);ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.lineTo(B[0],B[1]);ctx.stroke();ctx.setLineDash([]);
+    if(!s.ok){fnt(18,true);ctx.fillStyle=RED;txt('✗ цикл',(A[0]+B[0])/2,(A[1]+B[1])/2-12*K)}}
+  KP.forEach((p,i)=>{const c=m(p),a=stag(st,.5+i*.3,.4);if(a<=0)return;popWrap(c[0],c[1],eob(a),()=>{ctx.beginPath();ctx.arc(c[0],c[1],15*K,0,TAU);ctx.fillStyle=end?GRN:'hsl('+((rt[i]*53)%360)+',70%,48%)';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2.5*K;ctx.stroke();fnt(15,true);ctx.fillStyle='#fff';txt(ABC[i],c[0],c[1]+5*K)})});
+  card(W*.63,H*.2,W*.35,H*.66);fnt(15,true);ctx.fillStyle='#64748b';txt('дороги за зростанням довжини',W*.805,H*.2+26*K);
+  if(n>=0)for(let j=Math.max(0,idx-8),r=0;j<=idx;j++,r++){const s=KS[j],y=H*.2+58*K+r*H*.063;fnt(16,true);ctx.fillStyle=s.ok?GRN:RED;txt(ABC[s.a]+'–'+ABC[s.b]+'   '+Math.round(s.l*100)+' км   '+(s.ok?'✓ додаємо':'✗ цикл'),W*.65,y,'left')}
+  chip(end?'остовне дерево: '+Math.round(tot*100)+' км':(st<4?'1. сортуємо всі дороги за довжиною':'2. беремо найкоротшу, якщо не замикає цикл'),W*.3,H*.93,stag(st,1,.5),end?GRN:'#475569');
+  stamp('Жадібно й швидко ✓',W*.3,H*.15,30,GRN,st,endT,-.04)}
+/* 5. NP */
+function st5(w,h,st,gt){sceneTitle('NP-складність',st);const R=[['n = 4','3',.48],['n = 5','15',1.18],['n = 6','105',2.02],['n = 8','10 395',4.02],['n = 10','2 027 025',6.31],['n = 20','2,2·10²⁰',20.34]],t0=[6,8,10,12,14,17],
+  x0=W*.17,bw=W*.7,y0=H*.2,rh=H*.1;chip('кількість варіантів з’єднання',W*.55,H*.14,stag(st,4,.5),'#64748b');
+  R.forEach((r,i)=>{const u=eo(stag(st,t0[i],1.2)),y=y0+i*rh;if(u<=0)return;fnt(18,true);ctx.fillStyle=INK;txt(r[0],x0-12*K,y+24*K,'right');
+    ctx.fillStyle='hsl('+(130-i*24)+',70%,45%)';rr(x0,y,Math.max(6*K,r[2]/21*bw*u),32*K,6*K);ctx.fill();fnt(17,true);ctx.fillStyle=INK;txt(r[1],x0+r[2]/21*bw*u+10*K,y+23*K,'left')});
+  const mx=x0+18.88/21*bw;if(st>17){ctx.setLineDash([6*K,5*K]);ctx.strokeStyle=RED;ctx.lineWidth=2*K;ctx.beginPath();ctx.moveTo(mx,H*.17);ctx.lineTo(mx,H*.86);ctx.stroke();ctx.setLineDash([]);
+    chip('піщинок на Землі ≈ 7,5·10¹⁸',mx-40*K,H*.9,stag(st,18,.5),RED)}
+  stamp('NP-складна (1977)',W*.55,H*.8,32,RED,st,22,-.04)}
+/* 6. Застосування */
+function appChip(x,y,w,h,gt){ctx.fillStyle='#134e4a';rr(x,y,w,h,8*K);ctx.fill();const pins=[[.12,.2],[.5,.12],[.88,.22],[.2,.85],[.74,.88]],ty=y+h*.52;
+  ctx.strokeStyle='#fbbf24';ctx.lineWidth=3*K;ctx.beginPath();ctx.moveTo(x+w*.12,ty);ctx.lineTo(x+w*.88,ty);ctx.stroke();
+  pins.forEach(p=>{const px=x+p[0]*w,py=y+p[1]*h;ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px,ty);ctx.stroke();ctx.fillStyle='#e2e8f0';ctx.fillRect(px-6*K,py-6*K,12*K,12*K)});
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x+w*(.12+.76*((gt*.4)%1)),ty,5*K,0,TAU);ctx.fill()}
+function appPipes(x,y,w,h,gt){const m=sqm(x+w/2,y+h/2,Math.min(w,h)*.8),a=[.2887,.5],b=[.7113,.5],L=[[[0,0],a],[[0,1],a],[a,b],[[1,0],b],[[1,1],b]];
+  segs(L,m,'#0ea5e9',6,1);L.forEach((l,i)=>{const t=(gt*.5+i*.2)%1,A=m(l[0]),B=m(l[1]);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(lerp(A[0],B[0],t),lerp(A[1],B[1],t),3.5*K,0,TAU);ctx.fill()});
+  SQP.forEach(p=>{const q=m(p);town(q[0],q[1],'',1)})}
+function appTree(x,y,w,h,gt){const N={r:[.08,.5],a:[.45,.28],b:[.45,.74],c:[.88,.12],d:[.88,.42],e:[.88,.64],f:[.88,.88]},E=[['r','a'],['r','b'],['a','c'],['a','d'],['b','e'],['b','f']],col=['#ef4444','#f59e0b','#22c55e','#3b82f6'],q=k=>[x+N[k][0]*w,y+N[k][1]*h];
+  ctx.strokeStyle='#64748b';ctx.lineWidth=3*K;E.forEach(e=>{const A=q(e[0]),B=q(e[1]);ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.lineTo(A[0],B[1]);ctx.lineTo(B[0],B[1]);ctx.stroke()});
+  ['r','a','b'].forEach(k=>{const p=q(k);ctx.beginPath();ctx.arc(p[0],p[1],7*K,0,TAU);ctx.fillStyle='#fff';ctx.fill();ctx.setLineDash([3*K,2*K]);ctx.stroke();ctx.setLineDash([])});
+  ['c','d','e','f'].forEach((k,i)=>{const p=q(k);ctx.beginPath();ctx.arc(p[0],p[1],9*K,0,TAU);ctx.fillStyle=col[i];ctx.fill()})}
+function st6(w,h,st,gt){sceneTitle('Де це потрібно',st);const cw=W*.3,ch=H*.6,y0=H*.2,X=[W*.035,W*.35,W*.665],T0=[3,12,20],
+  TT=['Мікросхеми','Труби й оптоволокно','Дерево еволюції'],SB=[['провідники — прямокутні','мережі Штейнера'],['дороги мера: з’єднати міста','найкоротшою мережею'],['вузли — гіпотетичні','спільні предки видів']];
+  for(let i=0;i<3;i++){const p=eob(stag(st,T0[i],.6));if(p<=0)continue;ctx.save();ctx.globalAlpha=Math.min(1,p);ctx.translate(0,(1-p)*40);card(X[i],y0,cw,ch);fnt(20,true);ctx.fillStyle=INK;txt(TT[i],X[i]+cw/2,y0+30*K);
+    const px=X[i]+cw*.08,py=y0+50*K,pw=cw*.84,ph=ch*.52;[appChip,appPipes,appTree][i](px,py,pw,ph,gt);
+    fnt(15);ctx.fillStyle='#475569';txt(SB[i][0],X[i]+cw/2,y0+ch-44*K);txt(SB[i][1],X[i]+cw/2,y0+ch-22*K);ctx.restore()}}
+/* 7. Фінал */
+function st7(w,h,st,gt){sceneTitle('Кути по 120°',st);const s=Math.min(W*.4,H*.6),m=sqm(W*.5,H*.5,s),a=[.2887,.5],b=[.7113,.5];
+  segs([[[0,0],a],[[0,1],a],[a,b],[[1,0],b],[[1,1],b]],m,GRN,9,stag(st,1,3));SQP.forEach((p,i)=>{const q=m(p);town(q[0],q[1],NMS[i],stag(st,.3+i*.2,.5))});
+  angs(m(a),[m([0,0]),m([0,1]),m(b)],stag(st,5,.6));angs(m(b),[m([1,0]),m([1,1]),m(a)],stag(st,5,.6));
+  stamp('Дякую за увагу!',W*.5,H*.93,32,'#e11d48',st,8,-.04);confetti(W*.5,H*.5,st,8,70)}
+const scenes=[
+ {tick:'Мер',dur:26,draw:st0,text:"Мер області має чотири міста по кутах квадрата зі стороною сто кілометрів. З'єднайте їх дорогами так, щоб асфальту пішло якомога менше! Перший проєкт — літера «П»: триста кілометрів. Другий — «Н»: теж триста. Третій — «Ікс», дві діагоналі: двісті вісімдесят три. Уже краще. А чи можна ще коротше?"},
+ {tick:'Коротше!',dur:32,draw:st1,text:"Спробуймо розщепити центр «Ікса» на дві точки й розсунути їх. Дороги коротшають! Та якщо розсунути занадто — знову довшають. Найкраще — коли в кожній новій точці сходяться три дороги під кутом сто двадцять градусів. Разом двісті сімдесят три кілометри — майже на дев'ять відсотків менше, ніж у «П». Ці нові точки — не міста, їх називають точками Штейнера."},
+ {tick:'Формалізація',dur:34,draw:st2,text:"Тепер формально. Дано n точок на площині. Потрібно сполучити їх мережею найменшої сумарної довжини, і дозволено додавати нові точки — точки Штейнера. У кожній такій точці сходяться рівно три відрізки під кутами сто двадцять градусів, а самих точок не більше, ніж на дві менше за кількість міст. Найпростіший випадок — три точки."},
+ {tick:'Торічеллі',dur:36,draw:st3,text:"Для трьох точок задачу поставив Ферма, а розв'язав її Торічеллі — учень Галілея. Є й геніальний фізичний розв'язок. У столі свердлять три отвори, крізь них пропускають ланцюжки з однаковими вантажиками, а зверху зв'язують у вузол. Вантажики тягнуть униз — і вузол сам знаходить положення, де три однакові сили врівноважені, а це рівно сто двадцять градусів. Адже мінімум потенціальної енергії — це мінімум сумарної довжини ланцюжків!"},
+ {tick:'Узагальнення',dur:32,draw:st4,text:"Задачу узагальнили на будь-яку кількість точок — її пов'язують з ім'ям Якоба Штейнера, звідси й назва. Ось п'ять міст по вершинах п'ятикутника. Звичайна мережа — чотири сторони. А мережа Штейнера має три додаткові точки й коротша приблизно на три відсотки. Загалом економія ніколи не перевищує тринадцяти відсотків — цю межу двадцять років лише підозрювали, а довели в тисяча дев'ятсот дев'яностому."},
+ {tick:'Крускал',dur:30,draw:stK,text:"А без точок Штейнера задача проста. Беремо найкоротшу з усіх можливих доріг і додаємо її. Далі наступну найкоротшу — але лише якщо вона не замикає цикл. Так працює алгоритм Крускала. Кілька кроків — і всі міста з'єднані найкоротшим остовним деревом. Це швидко навіть для мільйонів міст. А от дозвіл додавати точки Штейнера ламає жадібність і робить задачу NP-складною."},
+ {tick:'NP-складність',dur:32,draw:st5,text:"Звучить просто, та насправді це одна з найважчих задач. Треба вибрати, як з'єднати точки в дерево, а різних варіантів — шалена кількість: для десяти точок понад два мільйони, а для двадцяти — більше, ніж піщинок на Землі. У тисяча дев'ятсот сімдесят сьомому довели, що задача Штейнера NP-складна. Ефективного точного алгоритму, імовірно, немає, але на практиці вміють знаходити майже ідеальні мережі."},
+ {tick:'Застосування',dur:32,draw:st6,text:"Де це потрібно? У проєктуванні мікросхем: провідники між контактами прокладають прямокутними мережами Штейнера, і кожен зекономлений міліметр — це швидкість і гроші. У трубопроводах і оптоволокні між містами — це наші дороги мера. А ще в біології: еволюційне дерево видів — теж дерево Штейнера, де внутрішні вузли — гіпотетичні спільні предки."},
+ {tick:'Фінал',dur:14,draw:st7,text:"Тож наступного разу, коли побачите дороги чи труби, що сходяться під кутом сто двадцять градусів, — знайте: це не випадковість, а математика найкоротшої мережі. Дякую за увагу! А тепер — спробуйте самі."},
+ {tick:'Гра',dur:14,noSub:true,isGame:true,draw:function(){Game.frame()},text:"А тепер — ваша черга! Клацайте, щоб ставити точки Штейнера, тягніть їх і натягуйте мережу найкоротшою. Спробуйте квадрат, драбину й сітку."}];
+const cum=[];let acc0=0;scenes.forEach(s=>{cum.push(acc0);acc0+=s.dur});
+const TOTAL=acc0;
+/* ================= ГРА «МЕРЕЖА ШТЕЙНЕРА» ================= */
+const Game=(function(){
+const el=id=>document.getElementById(id),layer=el('gameLayer'),gc=el('gameCanvas'),gx=gc.getContext('2d');
+const PZ={sq:{T:[[0,0],[1,0],[1,1],[0,1]],opt:[[.2887,.5],[.7113,.5]]},lad:{T:[[0,0],[1,0],[2,0],[0,1],[1,1],[2,1]],opt:[[.2752,.6241],[1.1376,.3121],[1.7248,.3759],[.8624,.688]]},grid:{T:[0,1,2].flatMap(j=>[0,1,2].map(i=>[i,j])),opt:[[.2887,1.5],[.7113,1.5],[1.5,.2887],[1.5,.7113]]}};
+Object.keys(PZ).forEach(k=>PZ[k].best=mstE(PZ[k].T.concat(PZ[k].opt)).L);
+let mode='sq',S=[],relax=0,dn=null,view={s:1,ox:0,oy:0},dpr=1;
+const T=()=>PZ[mode].T,fm=x=>x.toFixed(3).replace('.',',');
+function lay(){const t=T(),xs=t.map(p=>p[0]),ys=t.map(p=>p[1]),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys),pad=70*dpr*K,
+  s=Math.min((gc.width-2*pad)/((x1-x0)||1),(gc.height-2*pad)/((y1-y0)||1));view={s,ox:gc.width/2-s*(x0+x1)/2,oy:gc.height/2-s*(y0+y1)/2}}
+const sp=p=>[view.ox+p[0]*view.s,view.oy+p[1]*view.s],wp=(x,y)=>[(x-view.ox)/view.s,(y-view.oy)/view.s];
+function net(){const P=T().concat(S),m=mstE(P);return{P,E:m.E,L:m.L,deg:P.map((_,i)=>m.E.filter(e=>e[0]===i||e[1]===i).length)}}
+function gaps(c,nb){const an=nb.map(p=>Math.atan2(p[1]-c[1],p[0]-c[0])).sort((u,v)=>u-v);return an.map((u,i)=>{let v=an[(i+1)%an.length];if(v<=u)v+=TAU;return{u,v,g:(v-u)*180/Math.PI}})}
+function nbrs(n,id){return n.E.filter(e=>e[0]===id||e[1]===id).map(e=>n.P[e[0]===id?e[1]:e[0]])}
+function perfect(n,id){if(n.deg[id]!==3)return false;return gaps(n.P[id],nbrs(n,id)).every(a=>Math.abs(a.g-120)<5)}
+function refresh(){const n=net(),base=mstE(T()).L,best=PZ[mode].best,win=S.length>0&&n.L<=best*1.004;
+  el('gStatus').className='g-status'+(win?' win':'');
+  el('gStatus').innerHTML='Довжина мережі: <b>'+fm(n.L)+'</b><br>Без точок Штейнера: '+fm(base)+'<br>Найкраща відома: '+fm(best)+'<br>'+
+    (win?'🎉 Мінімальна мережа! Економія '+Math.round((1-n.L/base)*1000)/10+' %':S.length?'Економія: '+Math.round((1-n.L/base)*1000)/10+' %. Шукайте кути по 120°':'Поставте першу точку Штейнера');
+  document.querySelectorAll('#gSegP button').forEach(b=>b.classList.toggle('on',b.dataset.v===mode))}
+function step(){const n=net(),nT=T().length;S.forEach((q,i)=>{const nb=nbrs(n,nT+i);if(nb.length<3)return;let p=q.slice();
+  for(let k=0;k<3;k++){let sw=0,sx=0,sy=0;nb.forEach(r=>{const w=1/Math.max(1e-6,Math.hypot(p[0]-r[0],p[1]-r[1]));sw+=w;sx+=w*r[0];sy+=w*r[1]});p=[sx/sw,sy/sw]}
+  S[i]=[lerp(q[0],p[0],.35),lerp(q[1],p[1],.35)]})}
+function finish(){for(;;){const n=net(),nT=T().length,bad=S.findIndex((q,i)=>n.deg[nT+i]<3);if(bad<0)break;S.splice(bad,1)}refresh()}
+function setVisible(v){layer.classList.toggle('on',!!v);if(v)refresh();else dn=null}
+function seg(a,b){const A=sp(a),B=sp(b);gx.beginPath();gx.moveTo(A[0],A[1]);gx.lineTo(B[0],B[1]);gx.stroke()}
+function draw(){const u=dpr*K,n=net(),t=T(),nT=t.length;gx.lineCap='round';gx.setLineDash([8*u,6*u]);gx.strokeStyle='#cbd5e1';gx.lineWidth=3*u;mstE(t).E.forEach(e=>seg(t[e[0]],t[e[1]]));gx.setLineDash([]);
+  gx.strokeStyle='#1d4ed8';gx.lineWidth=5*u;n.E.forEach(e=>seg(n.P[e[0]],n.P[e[1]]));
+  S.forEach((q,i)=>{const id=nT+i;if(n.deg[id]!==3)return;const c=sp(q);gx.font='bold '+Math.round(13*u)+'px Georgia,serif';gx.textAlign='center';
+    gaps(c,nbrs(n,id).map(sp)).forEach(a=>{const md=(a.u+a.v)/2;gx.fillStyle=Math.abs(a.g-120)<5?GRN:'#b45309';gx.fillText(Math.round(a.g)+'°',c[0]+Math.cos(md)*30*u,c[1]+Math.sin(md)*30*u+5*u)})});
+  t.forEach(p=>{const c=sp(p);gx.beginPath();gx.arc(c[0],c[1],13*u,0,TAU);gx.fillStyle='#f59e0b';gx.fill();gx.strokeStyle='#92400e';gx.lineWidth=3*u;gx.stroke()});
+  S.forEach((q,i)=>{const c=sp(q);gx.beginPath();gx.arc(c[0],c[1],9*u,0,TAU);gx.fillStyle=perfect(n,nT+i)?GRN:'#8b5cf6';gx.fill();gx.strokeStyle='#fff';gx.lineWidth=2.5*u;gx.stroke()});
+  if(S.length&&n.L<=PZ[mode].best*1.004){gx.font='bold '+Math.round(32*u)+'px Georgia,serif';gx.fillStyle=GRN;gx.textAlign='center';gx.fillText('Мінімальна мережа!',gc.width/2,44*u)}}
+function frame(){const r=gc.getBoundingClientRect();dpr=window.devicePixelRatio||1;const w=Math.max(10,Math.round(r.width*dpr)),h=Math.max(10,Math.round(r.height*dpr));
+  if(gc.width!==w||gc.height!==h){gc.width=w;gc.height=h}
+  if(relax>0){step();relax--;if(!relax)finish();else if(relax%4===0)refresh()}
+  lay();gx.setTransform(1,0,0,1,0,0);gx.clearRect(0,0,w,h);draw()}
+const ev=e=>{const r=gc.getBoundingClientRect();return[(e.clientX-r.left)*dpr,(e.clientY-r.top)*dpr]};
+gc.addEventListener('pointerdown',e=>{const[x,y]=ev(e);let hit=-1;S.forEach((q,i)=>{const a=sp(q);if(Math.hypot(a[0]-x,a[1]-y)<18*dpr*K)hit=i});relax=0;
+  if(hit>=0)dn={i:hit,moved:false,fresh:false};else{S.push(wp(x,y));dn={i:S.length-1,moved:false,fresh:true}}
+  if(gc.setPointerCapture)try{gc.setPointerCapture(e.pointerId)}catch(_){}refresh()});
+gc.addEventListener('pointermove',e=>{if(!dn)return;const[x,y]=ev(e);S[dn.i]=wp(x,y);dn.moved=true;refresh()});
+const up=()=>{if(dn&&!dn.moved&&!dn.fresh){S.splice(dn.i,1);refresh()}dn=null};
+gc.addEventListener('pointerup',up);gc.addEventListener('pointercancel',()=>{dn=null});
+el('gRelax').addEventListener('click',()=>{relax=110});
+el('gReset').addEventListener('click',()=>{S=[];relax=0;refresh()});
+el('gAns').addEventListener('click',()=>{S=PZ[mode].opt.map(p=>p.slice());relax=0;refresh()});
+document.querySelectorAll('#gSegP button').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.v;S=[];relax=0;refresh()}));
+refresh();
+return{frame,setVisible,_t:{PZ,net,mstE,state:()=>({mode,S,relax})}}
+})();
+
+/* ================= TTS (гібрид) ================= */
+const synth=window.speechSynthesis;
+let engine='google',userPicked=false,gAudio=null,gToken=0;
+let voiceScene=-1,ttsDone=true,ttsActive=false;
+function detect(){if(userPicked)return;const vs=(synth&&synth.getVoices?synth.getVoices():[])||[];
+  const uk=vs.some(v=>v.lang&&v.lang.toLowerCase().startsWith('uk'));
+  updateEngineUI()}
+if(synth){detect();if(synth.onvoiceschanged!==undefined)synth.onvoiceschanged=detect}
+function updateEngineUI(){engineSeg.querySelectorAll('button').forEach(b=>
+  b.classList.toggle('on',b.dataset.e===engine))}
+function splitChunks(text,maxLen){const ss=text.match(/[^.!?]+[.!?]+/g)||[text];
+  const out=[];let cur='';ss.forEach(s=>{if((cur+s).length>maxLen&&cur){out.push(cur.trim());cur=s}else cur+=s});
+  if(cur)out.push(cur.trim());return out}
+/* ---- Google TTS (неофіційний): два ендпоїнти, при збої → відкат на Web Speech ---- */
+const G_URLS=[
+  q=>'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=uk&q='+encodeURIComponent(q),
+  q=>'https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=uk&q='+encodeURIComponent(q)];
+let gIdx=0,gOk=false;
+function ukVoice(){const vs=(synth&&synth.getVoices?synth.getVoices():[])||[];
+  return vs.find(v=>v.lang&&v.lang.toLowerCase().replace('_','-').startsWith('uk'))||null}
+/* Результат: 'ok' | 'fail' (помилка або 6 с без старту) | 'skip' (браузер заблокував автоплей) */
+function gPlay(url){return new Promise(res=>{
+  const a=new Audio(url);gAudio=a;let fin=false,started=false;
+  const end=r=>{if(!fin){fin=true;clearTimeout(tm);res(r)}};
+  const tm=setTimeout(()=>{if(!started){try{a.pause()}catch(e){}end('fail')}},6000);
+  a.onplaying=()=>{started=true;clearTimeout(tm);gOk=true};
+  a.onended=()=>end('ok');
+  a.onerror=()=>end(started?'ok':'fail');
+  a.play().catch(e=>{const n=e&&e.name;if(n==='NotAllowedError')end('skip');else if(n!=='AbortError')end('fail')})})}
+function gFallback(rest,idx){
+  console.warn('Google TTS недоступний → відкат на Web Speech');
+  hfMsg='⚠ Google TTS недоступний → Web Speech';
+  engine='webspeech';updateEngineUI();
+  if(rest&&rest.trim())speak(rest,idx);else{if(voiceScene===idx){ttsDone=true;ttsActive=false}}}
+function speak(text,sceneIdx){voiceScene=sceneIdx;ttsDone=false;ttsActive=true;
+  const done=()=>{if(voiceScene===sceneIdx){ttsDone=true;ttsActive=false}};
+  if(engine==='none'){ttsDone=true;ttsActive=false;return}
+  if(engine==='webspeech'){const v=synth&&ukVoice();
+    if(!v){engine='none';updateEngineUI();hfMsg='⚠ Немає українського голосу → тихо';done();return}
+    try{if(synth.speaking||synth.pending)synth.cancel()}catch(e){}
+    const u=new SpeechSynthesisUtterance(text);u.voice=v;u.lang=v.lang;
+    u.rate=clamp(0.95*speed,0.5,2);u.pitch=1;
+    u.onend=done;u.onerror=e=>{console.warn('Web Speech:',e&&e.error);done()};
+    synth.speak(u);if(synth.paused)synth.resume()}
+  else if(engine==='hf'){const myTok=++gToken;hfWait=true;
+    (async()=>{
+      if(!await hfEnsure()){if(myTok===gToken)hfFallback(text,sceneIdx);return}
+      /* у черзі лишаємо лише потрібне: ця сцена + наступна (після перемотування старі заявки не гальмують нові) */
+      {const want=new Set(),vv=hfVoiceSel.value;
+        [sceneIdx,sceneIdx+1].forEach(j=>{const s=scenes[j];if(s)hfSplit(s.text,110).forEach(c=>want.add(vv+'|'+c))});
+        hfPending.forEach(j=>{if(!want.has(j.key)){j.skipped=true;hfCache.delete(j.key);hfPending.delete(j)}})}
+      const ch=hfSplit(text,110),ps=ch.map(c=>hfSynth(c));ps.forEach(p=>p.catch(()=>{}));
+      hfPrefetch(sceneIdx+1); /* уся наступна сцена генерується, поки звучить поточна */
+      for(let i=0;i<ch.length;i++){let url;
+        if(i>0)hfWait=true;try{url=await ps[i]}catch(e){console.error('UA нейро:',e);if(myTok===gToken)hfFallback(text,sceneIdx);return}
+        if(myTok!==gToken)return;
+        hfWait=false;
+        await new Promise(res=>{const a=new Audio(url);a.playbackRate=speed;gAudio=a;
+          const txt=ch[i];a.addEventListener('loadedmetadata',()=>console.log('[UA нейро]',txt.length,'знаків →',a.duration.toFixed(1),'с:',txt));
+          a.onended=res;a.onerror=res;
+          const pl=a.play();if(pl)pl.catch(e=>{if(!(e&&e.name==='AbortError'))res()});
+          if(isPaused)a.pause()});
+        if(myTok!==gToken)return}
+      done()})().catch(e=>{console.error(e);hfWait=false;done()})}
+  else{const myTok=++gToken,ch=splitChunks(text,180);
+    (async()=>{
+      for(let i=0;i<ch.length;i++){let r='fail';
+        for(let k=0;k<G_URLS.length&&r==='fail';k++){const ix=(gIdx+k)%G_URLS.length;
+          r=await gPlay(G_URLS[ix](ch[i]));
+          if(myTok!==gToken)return;
+          if(r!=='fail')gIdx=ix}
+        if(r==='fail'){gFallback(ch.slice(i).join(' '),sceneIdx);return}}
+      done()})().catch(e=>{console.error(e);done()})}}
+/* ---- UA нейро: демо robinhad/ukrainian-tts на Hugging Face (відкат -> Google TTS) ---- */
+const HF_SPACE='robinhad/ukrainian-tts',HF_HOST='https://robinhad-ukrainian-tts.hf.space',
+  HF_CLIENT='https://cdn.jsdelivr.net/npm/@gradio/client@2.6.0/dist/index.min.js';
+const hfVoiceSel=document.getElementById('hfVoice');
+let hfApp=null,hfConn=null,hfMsg='',hfWait=false,hfQ=Promise.resolve(),hfApi='/predict';const hfCache=new Map(),hfPending=new Set();
+const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout '+ms)),ms))]);
+function hfEnsure(){if(hfConn)return hfConn;
+  hfConn=(async()=>{hfMsg='⏳';const m=await import(HF_CLIENT);
+    hfApp=await withTimeout(m.Client.connect(HF_SPACE),60000);hfMsg='';return true})()
+    .catch(e=>{console.error('UA нейро:',e);hfMsg='⚠ UA нейро недоступне → Google';hfConn=null;return false});
+  return hfConn}
+/* Забираємо аудіо в blob (кеш у пам'яті): коли дійде до сцени, воно вже в браузері. Якщо CORS не дозволяє — лишаємо звичайний URL */
+async function hfBlob(u){try{const r=await withTimeout(fetch(u),30000);if(!r.ok)throw new Error(r.status);
+  return URL.createObjectURL(await r.blob())}catch(e){return u}}
+function hfSynth(t){const v=hfVoiceSel.value,k=v+'|'+t;if(hfCache.has(k))return hfCache.get(k);
+  const job={key:k,started:false,skipped:false};hfPending.add(job);
+  const run=hfQ=hfQ.catch(()=>{}).then(async()=>{hfPending.delete(job);
+    if(job.skipped)throw new Error('skipped');job.started=true;let last;
+    for(const n of [hfApi,'/tts']){const t0=Date.now();
+      try{const r=await withTimeout(hfApp.predict(n,[t,v]),90000);
+        const f=r&&r.data&&r.data[0];const u=f&&(f.url||(f.path&&HF_HOST+'/file='+f.path));
+        if(!u)throw new Error('немає аудіо у відповіді');hfApi=n;return u}
+      catch(e){last=e;if(Date.now()-t0>4000)break}}
+    throw last});
+  const pr=run.then(hfBlob);
+  hfCache.set(k,pr);pr.catch(()=>{if(hfCache.get(k)===pr)hfCache.delete(k)});return pr}
+function hfPrefetch(i){const s=scenes[i];if(!s)return;hfSplit(s.text,110).forEach(c=>hfSynth(c).catch(()=>{}))}
+/* Ділимо лише за межами речень (. ! ? …): кома чи тире всередині речення не повинні ставати «крапкою».
+   Короткі сусідні речення склеюємо до max знаків. Дуже довге речення (>220) ділимо лише за ; або : */
+function hfSplit(text,max){
+  const ss=(text.match(/[^.!?…]+[.!?…]+["»”)]*|[^.!?…]+$/g)||[text]).map(x=>x.trim()).filter(Boolean);
+  const out=[];
+  ss.forEach(x=>{if(x.length<=220){out.push(x);return}
+    let cur='';x.split(/(?<=[;:])\s+/).forEach(q=>{
+      if(cur&&(cur+' '+q).length>max){out.push(cur);cur=q}else cur=cur?cur+' '+q:q});
+    if(cur)out.push(cur)});
+  const m=[];out.forEach(q=>{if(m.length&&(m[m.length-1]+' '+q).length<=max)m[m.length-1]+=' '+q;else m.push(q)});
+  return m.length?m:[text]}
+function hfFallback(text,idx){hfWait=false;engine='google';updateEngineUI();
+  if(!hfMsg)hfMsg='⚠ UA нейро недоступне → Google';speak(text,idx)}
+hfVoiceSel.onchange=()=>{if(engine==='hf'&&isPlaying&&!isPaused){stopSpeaking();speakScene()}};
+
+function stopSpeaking(){hfWait=false;gToken++;if(gAudio){gAudio.pause();gAudio=null}
+  if(synth){try{synth.cancel()}catch(e){}}
+  ttsActive=false;ttsDone=true}
+
+/* ================= ПЛЕЄР ================= */
+let currentScene=0,sceneTime=0,globalTime=0,isPlaying=false,isPaused=false,
+    hasStarted=false,finished=false,holdTimer=0,speed=1;
+function setPlayIcon(playing){icoPlay.style.display=playing?'none':'';
+  icoPause.style.display=playing?'':'none'}
+function setSubtitle(sc){if(chkSubs.checked&&!sc.noSub){subtitleEl.innerHTML=sc.text;
+  subtitleEl.style.opacity='1'}else subtitleEl.style.opacity='0'}
+function startScene(i){currentScene=clamp(i,0,scenes.length-1);sceneTime=0;holdTimer=0;
+  const sc=scenes[currentScene];setSubtitle(sc);stopSpeaking();
+  if(isPlaying)speak(sc.text,currentScene);updateSceneButtons()}
+function speakScene(){const sc=scenes[currentScene];setSubtitle(sc);speak(sc.text,currentScene)}
+function startShow(){hasStarted=true;finished=false;isPlaying=true;isPaused=false;
+  setPlayIcon(true);startScene(0)}
+function doPause(){isPaused=true;setPlayIcon(false);
+  if(engine==='webspeech'&&synth)synth.pause();
+  if((engine==='google'||engine==='hf')&&gAudio)gAudio.pause()}
+function doResume(){isPaused=false;setPlayIcon(true);
+  if(engine==='webspeech'&&synth)synth.resume();
+  if((engine==='google'||engine==='hf')&&gAudio)gAudio.play()}
+function togglePlay(){if(!hasStarted){startShow();return}
+  if(!isPlaying){finished=false;isPlaying=true;isPaused=false;setPlayIcon(true);speakScene();return}
+  isPaused?doResume():doPause()}
+function stopShow(){isPlaying=false;isPaused=false;finished=false;setPlayIcon(false);
+  stopSpeaking();currentScene=0;sceneTime=0;holdTimer=0;
+  subtitleEl.style.opacity='0';updateSceneButtons()}
+function seekScene(i){i=clamp(i,0,scenes.length-1);stopSpeaking();finished=false;
+  currentScene=i;sceneTime=0;holdTimer=0;updateSceneButtons();
+  if(isPlaying&&!isPaused)speakScene();else setSubtitle(scenes[i])}
+function seekTime(T){let i=0;while(i<scenes.length-1&&T>=cum[i+1])i++;
+  stopSpeaking();finished=false;currentScene=i;sceneTime=T-cum[i];holdTimer=0;
+  updateSceneButtons();if(isPlaying&&!isPaused)speakScene();else setSubtitle(scenes[i])}
+
+/* ================= ОБРОБНИКИ ================= */
+btnPlay.onclick=togglePlay;
+btnStop.onclick=stopShow;
+btnNext.onclick=()=>seekScene(currentScene+1);
+btnPrev.onclick=()=>seekScene(currentScene-1);
+progressZone.onclick=e=>{const r=progressZone.getBoundingClientRect();
+  seekTime(clamp((e.clientX-r.left)/r.width,0,1)*TOTAL)};
+engineSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{userPicked=true;
+  engine=b.dataset.e;if(engine!=='hf')hfMsg='';updateEngineUI();stopSpeaking();if(engine==='hf')hfEnsure();
+  if(isPlaying&&!isPaused)speakScene()});
+speedSel.onchange=()=>{speed=parseFloat(speedSel.value)};
+chkSubs.onchange=()=>{if(!chkSubs.checked)subtitleEl.style.opacity='0';
+  else setSubtitle(scenes[currentScene])};
+chkDebug.onchange=()=>{debugSection.style.display=chkDebug.checked?'block':'none'};
+document.addEventListener('keydown',e=>{
+  if(e.target&&e.target.closest&&e.target.closest('#gameLayer'))return;
+  if(e.code==='Space'){e.preventDefault();togglePlay()}
+  else if(e.code==='ArrowRight')seekScene(currentScene+1);
+  else if(e.code==='ArrowLeft')seekScene(currentScene-1);
+  else if(e.code==='KeyR')stopShow()});
+canvas.addEventListener('click',()=>{if(!hasStarted)startShow()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)lastTs=performance.now()});
+
+/* ================= ЗАСІЧКИ / ДЕБАГ ================= */
+const tickEls=[];
+scenes.forEach((sc,i)=>{const t=document.createElement('div');t.className='tick';
+  t.style.left=(cum[i]/TOTAL*100)+'%';t.title=(i+1)+'. '+sc.tick+' ('+sc.dur+' с)';
+  t.onclick=e=>{e.stopPropagation();seekScene(i)};ticksLayer.appendChild(t);tickEls.push(t);
+  const l=document.createElement('div');l.className='tick-label';l.style.left=(cum[i]/TOTAL*100)+'%';
+  l.textContent=sc.tick;ticksLayer.appendChild(l)});
+function updateLabelsVis(){ticksLayer.querySelectorAll('.tick-label').forEach(l=>
+  l.style.display=chkLabels.checked?'':'none')}
+chkLabels.onchange=updateLabelsVis;updateLabelsVis();
+scenes.forEach((sc,i)=>{const b=document.createElement('button');
+  b.textContent=fmt(cum[i])+' · '+sc.tick;b.onclick=()=>seekScene(i);
+  sceneListEl.appendChild(b)});
+function updateSceneButtons(){Game.setVisible(!!scenes[currentScene].isGame);
+  sceneListEl.querySelectorAll('button').forEach((b,i)=>
+  b.classList.toggle('active',i===currentScene));
+  sceneIndicator.textContent=(currentScene+1)+'/'+scenes.length+' · '+scenes[currentScene].tick}
+function fmt(s){s=Math.floor(s);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function updateHud(){const sc=scenes[currentScene];
+  const cur=cum[currentScene]+Math.min(sceneTime,sc.dur);
+  progressFill.style.width=(cur/TOTAL*100)+'%';
+  timeDisp.textContent=fmt(cur)+' / '+fmt(TOTAL);
+  tickEls.forEach((t,i)=>t.classList.toggle('active',i===currentScene));
+  voiceState.textContent=(engine==='none'?'🔇':(ttsActive?'🔊':'🔈'))+(hfMsg?' '+hfMsg:'');
+  voiceState.classList.toggle('active',ttsActive)}
+updateSceneButtons();
+
+/* ================= ГОЛОВНИЙ ЦИКЛ ================= */
+let lastTs=performance.now();
+function overlayStart(){ctx.fillStyle='rgba(8,12,26,.55)';ctx.fillRect(0,0,W,H);
+  const pu=1+0.05*Math.sin(performance.now()/300);
+  ctx.save();ctx.translate(W/2,H/2-30);ctx.scale(pu,pu);
+  ctx.beginPath();ctx.arc(0,0,54,0,TAU);ctx.fillStyle='rgba(255,255,255,.95)';ctx.fill();
+  ctx.strokeStyle='#e11d48';ctx.lineWidth=5;ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-14,-22);ctx.lineTo(-14,22);ctx.lineTo(24,0);ctx.closePath();
+  ctx.fillStyle='#e11d48';ctx.fill();ctx.restore();
+  fnt(22,true);ctx.fillStyle='#fff';txt('Натисніть, щоб дивитись з озвученням',W/2,H/2+70);
+  fnt(15);ctx.fillStyle='rgba(255,255,255,.85)';
+  txt('Space — пауза · ←/→ — сцени · клік по шкалі — перемотка',W/2,H/2+102)}
+
+function frame(ts){const rawDt=Math.min(0.1,(ts-lastTs)/1000);lastTs=ts;
+  if(isPlaying&&!isPaused&&!(engine==='hf'&&hfWait)){const dt=rawDt*speed;globalTime+=dt;sceneTime+=dt;
+    const sc=scenes[currentScene];
+    const animDone=sceneTime>=sc.dur;
+    const voiceOK=engine==='none'||ttsDone||sceneTime>sc.dur+(engine==='webspeech'?30:60);
+    if(animDone&&voiceOK){holdTimer+=dt;
+      if(holdTimer>=0.7){
+        if(currentScene<scenes.length-1)startScene(currentScene+1);
+        else{finished=true;isPlaying=false;isPaused=false;setPlayIcon(false);stopSpeaking()}}}
+    else holdTimer=0}
+  gtNow=globalTime; /* критично: мерехтіння ліхтарів, курсор, шеврони, сніг */
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#fbf7f0');g.addColorStop(1,'#f2ebdd');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  scenes[currentScene].draw(W,H,sceneTime,globalTime);
+  const f=1-stag(sceneTime,0,0.45);
+  if(f>0&&hasStarted){ctx.fillStyle='rgba(251,247,240,'+f*0.6+')';ctx.fillRect(0,0,W,H)}
+  if(hasStarted&&engine==='hf'&&hfWait){ctx.fillStyle='rgba(30,30,30,.75)';ctx.font='bold 16px Arial';ctx.textAlign='left';ctx.fillText('Готую озвучення…',16,H-16)}
+  if(!hasStarted)overlayStart();
+  updateHud();
+  requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
