@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Без Referer: на GitHub Pages неофіційний Google TTS інакше відхиляє запити (з file:// Referer не надсилається) -->
+<meta name="referrer" content="no-referrer">
+<title>Філогенетичні дерева і код Прюфера — анімована презентація</title>
+<style>
+:root{--bg:#f6f1e7;--txt:#2c2416;--mut:#6b5d4f;--red:#e11d48}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Georgia,'Times New Roman',serif;background:var(--bg);color:var(--txt);
+  display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:18px}
+.container{width:100%;max-width:1240px;display:flex;flex-direction:column}
+.presentation{width:100%;aspect-ratio:16/9;background:#fff;border:2px solid #d4cfc7;
+  border-radius:10px 10px 0 0;position:relative;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+canvas{width:100%;height:100%;display:block;cursor:pointer}
+.scene-indicator{position:absolute;top:14px;right:14px;background:rgba(30,64,175,.92);color:#fff;
+  padding:5px 12px;border-radius:5px;font-size:13px;font-weight:bold;pointer-events:none}
+.subtitle{position:absolute;left:0;right:0;bottom:10px;width:100%;box-sizing:border-box;
+  padding:0 4%;background:transparent;color:#fff;font-weight:bold;
+  font-size:clamp(15px,2.1vw,26px);text-align:center;line-height:1.4;
+  text-shadow:0 0 3px #000,0 0 6px #000,0 2px 5px rgba(0,0,0,.95),0 0 12px rgba(0,0,0,.7);
+  transition:opacity .3s;pointer-events:none}
+.controls{background:linear-gradient(#241c15,#15100b);border-radius:0 0 10px 10px;padding:6px 14px 12px}
+.progress-zone{position:relative;height:40px;cursor:pointer}
+.progress-track{position:absolute;left:0;right:0;top:15px;height:5px;background:rgba(255,255,255,.16);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;width:0;background:linear-gradient(90deg,#e11d48,#f43f5e);border-radius:3px}
+.tick{position:absolute;top:11px;width:3px;height:13px;background:rgba(255,255,255,.45);border-radius:2px;transform:translateX(-1px)}
+.tick:hover{background:#fff}
+.tick.active{background:#fbbf24;box-shadow:0 0 6px #fbbf24}
+.tick-label{position:absolute;top:27px;transform:translateX(-50%);font-size:10px;color:rgba(255,255,255,.62);
+  white-space:nowrap;pointer-events:none;font-family:Arial,sans-serif}
+.btn-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.ctl{background:transparent;border:none;cursor:pointer;width:34px;height:34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;transition:background .2s}
+.ctl:hover{background:rgba(255,255,255,.12)}
+.ctl svg{width:19px;height:19px;fill:#fff}
+.time{color:#fff;font:13px Arial;margin-left:4px;min-width:96px}
+.seg{display:flex;border:1px solid rgba(255,255,255,.18);border-radius:7px;overflow:hidden}
+.seg button{background:transparent;border:none;color:#cfc7ba;padding:5px 10px;font:12px Arial;cursor:pointer}
+.seg button+button{border-left:1px solid rgba(255,255,255,.14)}
+.seg button.on{background:var(--red);color:#fff}
+select{background:#2a221b;color:#eee;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px 6px;font:12px Arial}
+.chk{display:flex;align-items:center;gap:5px;color:#d9d2c5;font:13px Arial;cursor:pointer;user-select:none}
+.chk input{accent-color:var(--red);width:15px;height:15px;cursor:pointer}
+.voice{margin-left:auto;color:#fff;font:15px Arial;background:rgba(255,255,255,.1);border-radius:5px;padding:3px 9px}
+.voice.active{animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.45}}
+.debug-section{margin-top:14px;background:#fff;border:2px solid #d4cfc7;border-radius:8px;padding:14px}
+.debug-section h3{font-size:14px;color:var(--mut);margin-bottom:10px}
+.scene-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:7px}
+.scene-list button{padding:7px;border:2px solid #d4cfc7;border-radius:6px;background:#fff;color:var(--txt);
+  font:12px Georgia;cursor:pointer;text-align:left}
+.scene-list button:hover{border-color:#1e40af}
+.scene-list button.active{background:#1e40af;color:#fff;border-color:#1e40af}
+/* ---- гра «Чарівне слово» ---- */
+#gameLayer{--gb:#2563eb;--gr:#dc2626;position:absolute;inset:0;display:none;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);
+  gap:calc(12px*var(--k,1));padding:calc(12px*var(--k,1));background:linear-gradient(#fbf7f0,#f2ebdd);
+  font-family:Georgia,'Times New Roman',serif;color:var(--txt)}
+#gameLayer.on{display:grid}
+.g-graph{position:relative;min-width:0;min-height:0}
+#gameCanvas{width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+.g-busy{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-size:calc(22px*var(--k,1));
+  font-weight:bold;color:var(--mut);background:rgba(251,247,240,.85)}
+.g-panel{min-width:0;min-height:0;overflow:auto;background:rgba(255,255,255,.93);border:2px solid #d4cfc7;
+  border-radius:calc(12px*var(--k,1));padding:calc(12px*var(--k,1)) calc(16px*var(--k,1));display:flex;flex-direction:column;
+  gap:calc(9px*var(--k,1));box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.g-title{font-size:calc(26px*var(--k,1));font-weight:bold;line-height:1.15}
+.g-title:after{content:'';display:block;width:calc(90px*var(--k,1));height:3px;background:var(--red);margin-top:calc(6px*var(--k,1))}
+.g-task{font-size:calc(17px*var(--k,1));line-height:1.4}
+.g-task .g-t{display:inline-block;min-width:1.8em;text-align:center;background:#f59e0b;color:#fff;border-radius:999px;padding:0 .35em;font-weight:bold}
+.g-slots{display:flex;gap:calc(10px*var(--k,1));justify-content:center;margin:calc(2px*var(--k,1)) 0}
+.g-slot{width:calc(52px*var(--k,1));height:calc(52px*var(--k,1));border:2px dashed #cbbfae;border-radius:50%;display:flex;
+  align-items:center;justify-content:center;font-size:calc(22px*var(--k,1));font-weight:bold;color:#fff;transition:transform .15s}
+.g-slot.f{border:3px solid rgba(15,23,42,.35)}
+.g-slot.f.B{background:var(--gb)}.g-slot.f.R{background:var(--gr)}
+.g-slot.act{transform:scale(1.18);box-shadow:0 0 0 4px rgba(251,191,36,.7)}
+.g-keys{display:flex;gap:calc(10px*var(--k,1));justify-content:center}
+.g-key{width:calc(54px*var(--k,1));height:calc(54px*var(--k,1));border-radius:50%;border:3px solid rgba(15,23,42,.25);
+  font:bold calc(22px*var(--k,1)) Georgia,serif;cursor:pointer;color:#fff;background:#64748b}
+.g-key.b{background:var(--gb)}.g-key.r{background:var(--gr)}
+.g-key.s{font-size:calc(18px*var(--k,1));background:#e7e1d6;color:#4a3f2e}
+.g-key:hover:not(:disabled){filter:brightness(1.1)}.g-key:active:not(:disabled){transform:scale(.94)}
+.g-key:disabled{opacity:.4;cursor:default}
+.g-row{display:flex;gap:calc(8px*var(--k,1));flex-wrap:wrap;justify-content:center;align-items:center}
+.g-go{background:var(--red);color:#fff;border:none;border-radius:calc(9px*var(--k,1));padding:calc(9px*var(--k,1)) calc(26px*var(--k,1));
+  font:bold calc(18px*var(--k,1)) Georgia,serif;cursor:pointer;box-shadow:0 3px 0 #9f1239}
+.g-go:disabled{opacity:.45;cursor:default;box-shadow:none}
+.g-alt{background:#fff;border:2px solid #d4cfc7;border-radius:calc(9px*var(--k,1));padding:calc(7px*var(--k,1)) calc(12px*var(--k,1));
+  font:calc(13px*var(--k,1)) Georgia,serif;color:var(--txt);cursor:pointer}
+.g-alt:hover:not(:disabled){border-color:#1e40af}.g-alt:disabled{opacity:.45;cursor:default}
+.g-status{font-size:calc(15px*var(--k,1));line-height:1.4;min-height:calc(64px*var(--k,1));color:#4a3f2e}
+.g-status.win{color:#15803d;font-weight:bold}
+.g-status .cb,.g-slot .cb{color:var(--gb)}.g-status .cr{color:var(--gr)}
+.g-settings{margin-top:auto;display:flex;flex-wrap:wrap;gap:calc(8px*var(--k,1)) calc(14px*var(--k,1));align-items:center;
+  font-size:calc(13px*var(--k,1));color:var(--mut);border-top:1px solid #e7e1d6;padding-top:calc(8px*var(--k,1))}
+.g-seg{display:inline-flex;border:1px solid #d4cfc7;border-radius:7px;overflow:hidden;vertical-align:middle;margin-left:4px}
+.g-seg button{background:#fff;border:none;padding:calc(4px*var(--k,1)) calc(9px*var(--k,1));font:calc(13px*var(--k,1)) Georgia,serif;cursor:pointer;color:var(--txt)}
+.g-seg button+button{border-left:1px solid #d4cfc7}
+.g-seg button.on{background:#1e40af;color:#fff}
+.g-seg button.on{background:#1e40af;color:#fff}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="presentation">
+    <canvas id="canvas"></canvas>
+    <div id="gameLayer">
+      <div class="g-graph"><canvas id="gameCanvas"></canvas><div class="g-busy" id="gBusy"></div></div>
+      <div class="g-panel">
+<div class="g-title" id="gTitle">Гра: код Прюфера</div>
+        <div class="g-task" id="gTask"></div>
+        <div class="g-row" id="gDigits" style="display:none;flex-wrap:wrap"></div>
+        <div class="g-row"><button class="g-go" id="gHint">Підказка</button><button class="g-alt" id="gReset">Нове дерево</button><button class="g-alt" id="gAns">Показати відповідь</button><button class="g-go" id="gNext" disabled>Далі →</button></div>
+        <div class="g-status" id="gStatus"></div>
+        <div class="g-settings"><span>Вершин:<span class="g-seg" id="gSegP"><button data-v="6">6</button><button data-v="7">7</button><button data-v="8">8</button></span></span></div>
+      </div>
+    </div>
+    <div class="scene-indicator" id="sceneIndicator"></div>
+    <div class="subtitle" id="subtitle" style="opacity:0"></div>
+  </div>
+
+  <div class="controls">
+    <div class="progress-zone" id="progressZone">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div id="ticksLayer"></div>
+    </div>
+    <div class="btn-row">
+      <button class="ctl" id="btnPlay" title="Грати / Пауза (Space)"><span id="icoPlay"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span><span id="icoPause" style="display:none"><svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg></span></button>
+      <button class="ctl" id="btnStop" title="Спочатку (R)"><svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg></button>
+      <button class="ctl" id="btnPrev" title="Попередня сцена (←)"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+      <button class="ctl" id="btnNext" title="Наступна сцена (→)"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+      <span class="time" id="timeDisp">0:00 / 0:00</span>
+      <div class="seg" id="engineSeg" title="Рушій озвучення">
+        <button data-e="hf" title="Українська нейромережа (безкоштовне демо на Hugging Face)">UA нейро</button>
+        <button data-e="webspeech">Web Speech</button>
+        <button data-e="google" class="on">Google TTS</button>
+        <button data-e="none">Тихо</button>
+      </div>
+      <select id="hfVoice" title="Голос (для UA нейро)"><option value="Тетяна (жіночий) 👩">Тетяна</option><option value="Лада (жіночий) 👩" selected>Лада</option><option value="Дмитро (чоловічий) 👨">Дмитро</option><option value="Микита (чоловічий) 👨">Микита</option><option value="Олекса (чоловічий) 👨">Олекса</option></select>
+      <select id="speedSel" title="Швидкість">
+        <option value="0.75">0.75×</option><option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option><option value="1.5">1.5×</option>
+      </select>
+      <label class="chk"><input type="checkbox" id="chkSubs"><span>Субтитри</span></label>
+      <label class="chk"><input type="checkbox" id="chkLabels" checked><span>Назви сцен</span></label>
+      <label class="chk"><input type="checkbox" id="chkDebug"><span>Дебаг</span></label>
+      <span class="voice" id="voiceState">🔈</span>
+    </div>
+  </div>
+
+  <div class="debug-section" id="debugSection" style="display:none">
+    <h3>🔧 Перейти до сцени</h3>
+    <div class="scene-list" id="sceneList"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================= БАЗА ================= */
+const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d');
+const subtitleEl=document.getElementById('subtitle'),sceneIndicator=document.getElementById('sceneIndicator');
+const progressZone=document.getElementById('progressZone'),progressFill=document.getElementById('progressFill');
+const timeDisp=document.getElementById('timeDisp'),voiceState=document.getElementById('voiceState');
+const ticksLayer=document.getElementById('ticksLayer'),sceneListEl=document.getElementById('sceneList');
+const debugSection=document.getElementById('debugSection');
+const chkSubs=document.getElementById('chkSubs'),chkLabels=document.getElementById('chkLabels'),chkDebug=document.getElementById('chkDebug');
+const btnPlay=document.getElementById('btnPlay'),btnStop=document.getElementById('btnStop'),
+      btnPrev=document.getElementById('btnPrev'),btnNext=document.getElementById('btnNext'),
+      icoPlay=document.getElementById('icoPlay'),icoPause=document.getElementById('icoPause'),
+      speedSel=document.getElementById('speedSel'),engineSeg=document.getElementById('engineSeg');
+
+let W=0,H=0,K=1,DPR=1;
+function resize(){const r=canvas.getBoundingClientRect();DPR=window.devicePixelRatio||1;
+  W=r.width;H=r.height;canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);
+  K=Math.max(.6,Math.min(1.1,W/1150));}
+window.addEventListener('resize',resize);resize();
+
+const TAU=Math.PI*2;
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const lerp2=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t)];
+const eo=t=>1-Math.pow(1-t,3);
+const eio=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const eob=t=>{const c=1.70158;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2)};
+const stag=(t,s,d)=>clamp((t-s)/d,0,1);
+const rnd=i=>{const x=Math.sin(i*127.1+311.7)*43758.5453;return x-Math.floor(x)};
+const BLUE='#2563eb',RED='#dc2626';
+let gtNow=0;
+function fnt(px,bold){ctx.font=(bold?'bold ':'')+Math.round(px*K)+'px Georgia,"Times New Roman",serif'}
+function fntE(px){ctx.font=Math.round(px*K)+'px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif'}
+function txt(t,x,y,al){ctx.textAlign=al||'center';ctx.fillText(t,x,y)}
+function rr(x,y,w,h,r){r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+function card(x,y,w,h){ctx.fillStyle='rgba(255,255,255,.93)';rr(x,y,w,h,10*K);ctx.fill();
+  ctx.strokeStyle='#d4cfc7';ctx.lineWidth=1.5*K;ctx.stroke()}
+function chip(text,x,y,al,col){col=col||'#1e40af';if(al<=0)return;ctx.globalAlpha=al;fnt(16,true);
+  const tw=ctx.measureText(text).width;ctx.fillStyle='rgba(255,255,255,.95)';rr(x-tw/2-10*K,y-14*K,tw+20*K,26*K,7*K);ctx.fill();
+  ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.stroke();ctx.fillStyle=col;txt(text,x,y+5*K);ctx.globalAlpha=1}
+function stamp(text,x,y,size,color,st,t0,rot){const p=eob(stag(st,t0,0.45));if(p<=0)return;
+  ctx.save();ctx.translate(x,y);ctx.rotate((rot||-0.1)*(1-p*.5));ctx.scale(p,p);
+  fnt(size,true);const w2=ctx.measureText(text).width+36*K;
+  ctx.fillStyle='rgba(255,255,255,.93)';rr(-w2/2,-size*.72*K,w2,size*1.44*K,10*K);ctx.fill();
+  ctx.strokeStyle=color;ctx.lineWidth=3*K;ctx.stroke();ctx.fillStyle=color;txt(text,0,size*.34*K);ctx.restore()}
+function shock(x,y,st,t0,color,R){R=R||180;const u=stag(st,t0,0.9);if(u<=0||u>=1)return;
+  ctx.strokeStyle=color;ctx.globalAlpha=(1-u)*.8;ctx.lineWidth=(4*(1-u)+1)*K;
+  ctx.beginPath();ctx.arc(x,y,u*R*K,0,TAU);ctx.stroke();ctx.globalAlpha=1}
+function confetti(x,y,st,t0,n){for(let i=0;i<n;i++){const u=(st-t0)-i*.012;if(u<0||u>2.6)continue;
+  const a=rnd(i)*TAU,v=(110+rnd(i+50)*170)*K,dx=Math.cos(a)*v*u*.6,dy=Math.sin(a)*v*u*.6+140*K*u*u;
+  ctx.globalAlpha=clamp(1-u/2.6,0,1);ctx.fillStyle=[BLUE,RED,'#eab308','#16a34a'][i%4];
+  ctx.beginPath();ctx.arc(x+dx,y+dy,3.5*K,0,TAU);ctx.fill()}ctx.globalAlpha=1}
+function typeText(text,st,t0){const n=Math.floor(Math.max(0,(st-t0))*30);if(n<=0)return null;
+  return text.slice(0,n)+(n<text.length&&Math.floor(gtNow*3)%2?'▌':'')}
+function caption(text,st,t0,y){const shown=typeText(text,st,t0);if(!shown)return;
+  fnt(19);const tw=ctx.measureText(text).width;
+  ctx.fillStyle='rgba(255,255,255,.88)';rr(W/2-tw/2-14,y-24*K,tw+28,34*K,8);ctx.fill();
+  ctx.strokeStyle='#d4cfc7';ctx.lineWidth=1;ctx.stroke();ctx.fillStyle='#4a3f2e';txt(shown,W/2,y)}
+function sceneTitle(t,st,col){col=col||'#2c2416';const p=eob(stag(st,0.1,0.6));if(p>0){
+  ctx.save();ctx.translate(W/2,44);ctx.scale(Math.max(.001,p),Math.max(.001,p));
+  fnt(30,true);ctx.fillStyle=col;txt(t,0,0);ctx.restore()}
+  const u=eo(stag(st,0.4,0.5));if(u>0){ctx.strokeStyle='#e11d48';ctx.lineWidth=3*K;ctx.beginPath();
+  ctx.moveTo(W/2-95*K*u,56);ctx.lineTo(W/2+95*K*u,56);ctx.stroke()}}
+function arrowHead(x,y,ang,size,col,a){if(a<=0)return;ctx.save();ctx.translate(x,y);ctx.rotate(ang);ctx.globalAlpha=a;
+  ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(-size,-size*0.7);ctx.lineTo(size*0.6,0);ctx.lineTo(-size,size*0.7);ctx.closePath();ctx.fill();ctx.restore()}
+function curveArrow(x1,y1,x2,y2,bend,col,pop,lw){if(pop<=0)return;const mx=(x1+x2)/2,my=(y1+y2)/2;
+  const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy)||1;const nx=-dy/len,ny=dx/len;
+  const cx2=mx+nx*bend,cy2=my+ny*bend;
+  ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.lineCap='round';ctx.globalAlpha=pop;
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.quadraticCurveTo(cx2,cy2,x2,y2);ctx.stroke();
+  arrowHead(x2,y2,Math.atan2(y2-cy2,x2-cx2),8*K,col,pop);ctx.globalAlpha=1}
+function heart(x,y,s,a){ctx.save();ctx.translate(x,y);ctx.scale(s/8,s/8);ctx.globalAlpha=a;
+  ctx.fillStyle='#ec4899';ctx.beginPath();ctx.moveTo(0,4);ctx.bezierCurveTo(-6,-2,-3,-8,0,-3);
+  ctx.bezierCurveTo(3,-8,6,-2,0,4);ctx.fill();ctx.restore()}
+function hearts(x,y,st,t0,n){for(let i=0;i<n;i++){const u=st-t0-i*0.5;if(u<0||u>2.4)continue;
+  heart(x+Math.sin(u*5+i*2)*12*K,y-14*K-u*50*K,(1.6+(i%2)*0.8)*K*2.2,clamp(1-u/2.4,0,1)*0.9)}}
+function popWrap(x,y,p,fn){if(p<=0)return;ctx.save();ctx.translate(x,y);ctx.scale(p,p);ctx.translate(-x,-y);fn();ctx.restore()}
+function pointer(x1,y1,x2,y2,st,t0){const u=stag(st,t0,0.4);if(u<=0)return;
+  ctx.globalAlpha=u;ctx.strokeStyle='#94a3b8';ctx.lineWidth=1.6;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#94a3b8';ctx.beginPath();ctx.arc(x2,y2,3.5*K,0,TAU);ctx.fill();ctx.globalAlpha=1}
+function wordChips(cx,cy,word,st,t0,active,doneN,sc){sc=sc||1;const n=word.length,gap=54*K*sc;const x0=cx-(n-1)*gap/2;
+  word.forEach((L,i)=>{const p=eob(stag(st,t0+i*0.3,0.4));if(p<=0)return;
+    const x=x0+i*gap,col=(L==='B')?BLUE:RED,act=(i===active);
+    const sc2=act?(1+0.1*Math.sin(gtNow*6)):1;
+    ctx.save();ctx.translate(x,cy);ctx.scale(sc*sc2*p,sc*sc2*p);
+    ctx.beginPath();ctx.arc(0,0,16*K,0,TAU);ctx.fillStyle=col;ctx.fill();
+    ctx.strokeStyle=act?'#fff':'rgba(15,23,42,.35)';ctx.lineWidth=act?3:1.5;ctx.stroke();
+    if(act){ctx.globalAlpha=0.5+0.3*Math.sin(gtNow*7);ctx.beginPath();ctx.arc(0,0,23*K,0,TAU);
+      ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();ctx.globalAlpha=1}
+    fnt(15,true);ctx.fillStyle='#fff';txt(L==='B'?'С':'Ч',0,5.5*K);
+    if(i<doneN){fnt(13,true);ctx.fillStyle='#22c55e';txt('✓',13*K,-13*K)}
+    ctx.restore()})}
+function waves(x,y,st,t0,col){if(st<t0)return;const u0=st-t0;
+  for(let k=0;k<3;k++){const u=(u0*1.1-k*0.33)%1;if(u<0)continue;
+    ctx.globalAlpha=(1-u)*0.8;ctx.strokeStyle=col;ctx.lineWidth=2*K;
+    ctx.beginPath();ctx.arc(x,y,(6+u*20)*K,-0.9,0.9);ctx.stroke()}ctx.globalAlpha=1}
+function drawWalkerDot(x,y,col){ctx.beginPath();ctx.arc(x,y-10*K,9*K,0,TAU);ctx.fillStyle=col;ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle='#1f2937';ctx.beginPath();ctx.arc(x-3*K,y-12*K,1.4*K,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.arc(x+3*K,y-12*K,1.4*K,0,TAU);ctx.fill()}
+
+/* ================= ТЕМА: ДЕРЕВА І КОД ПРЮФЕРА ================= */
+const GRN='#16a34a',INK='#2c2416',MUT='#64748b';
+const T0={P:[[.08,.2],[.08,.8],[.92,.2],[.36,.5],[.64,.5],[.92,.8]],E:[[1,4],[2,4],[4,5],[3,5],[5,6]]};
+function pruf(E,n){const adj=Array.from({length:n+1},()=>new Set());E.forEach(([a,b])=>{adj[a].add(b);adj[b].add(a)});
+  const r=[];for(let k=0;k<n-2;k++){let l=0;for(let v=1;v<=n;v++)if(adj[v].size===1){l=v;break}
+    const u=[...adj[l]][0];r.push([l,u]);adj[u].delete(l);adj[l].clear()}return r}
+function unpruf(c){const n=c.length+2,d=Array(n+1).fill(1),E=[];c.forEach(x=>d[x]++);
+  c.forEach(x=>{for(let v=1;v<=n;v++)if(d[v]===1){E.push([v,x]);d[v]=0;d[x]--;break}});
+  const r=[];for(let v=1;v<=n;v++)if(d[v]===1)r.push(v);E.push(r);return E}
+const mapT=(P,x,y,w,h)=>P.map(p=>[x+p[0]*w,y+p[1]*h]);
+function node(x,y,l,col,a,r){if(a<=0)return;ctx.globalAlpha=a;ctx.beginPath();ctx.arc(x,y,(r||17)*K,0,TAU);ctx.fillStyle=col||BLUE;ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();if(l){fnt(16,true);ctx.fillStyle='#fff';txt(l,x,y+5.5*K)}ctx.globalAlpha=1}
+function edge(a,b,col,al,lw){if(al<=0)return;ctx.globalAlpha=al;ctx.strokeStyle=col;ctx.lineWidth=(lw||4)*K;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();ctx.globalAlpha=1}
+function link(a,b,col,al,bend,dash){if(al<=0)return;ctx.globalAlpha=al;ctx.strokeStyle=col;ctx.lineWidth=3*K;ctx.setLineDash(dash?[8,6]:[]);
+  ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.quadraticCurveTo((a[0]+b[0])/2,(a[1]+b[1])/2-bend,b[0],b[1]);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1}
+function emo(e,x,y,s,a,lab){if(a<=0)return;ctx.globalAlpha=a;fntE(s);ctx.fillStyle=INK;txt(e,x,y);
+  if(lab){fnt(15,true);txt(lab,x,y+26*K)}ctx.globalAlpha=1}
+function wcard(x,y,lang,w1,w2,a){if(a<=0)return;ctx.globalAlpha=a;card(x-82*K,y-34*K,164*K,76*K);
+  fnt(13);ctx.fillStyle=MUT;txt(lang,x,y-14*K);fnt(18,true);ctx.fillStyle=INK;txt(w1+' · '+w2,x,y+20*K);ctx.globalAlpha=1}
+function codeBoxes(x,y,code,shown,act){for(let k=0;k<code.length;k++){const bx=x+k*54*K;ctx.fillStyle=k===act?'#fef3c7':'rgba(255,255,255,.93)';
+  rr(bx,y-26*K,46*K,52*K,8*K);ctx.fill();ctx.strokeStyle=k===act?'#f59e0b':'#d4cfc7';ctx.lineWidth=2;ctx.stroke();
+  if(k<shown){fnt(26,true);ctx.fillStyle=RED;txt(''+code[k],bx+23*K,y+9*K)}}}
+
+const AE={k:'🐋',b:'🦛',c:'🐄'},AN={k:'кит',b:'бегемот',c:'корова'},ATP=[['k','b','c'],['k','c','b'],['b','c','k']];
+function rootedTree(i,cx,cy,cw,ch,p,hl){const t=ATP[i],lv=[[-.3,.3],[0,.3],[.3,.3]].map(q=>[cx+q[0]*cw,cy+q[1]*ch]),x=[cx-cw*.15,cy+ch*.02],r=[cx,cy-ch*.34];
+  ctx.globalAlpha=p;card(cx-cw*.5,cy-ch*.62,cw,ch*1.3);
+  if(hl){ctx.strokeStyle=GRN;ctx.lineWidth=4*K;rr(cx-cw*.5,cy-ch*.62,cw,ch*1.3,10*K);ctx.stroke()}
+  ctx.globalAlpha=1;const up=q=>[q[0],q[1]-30*K];
+  edge(r,x,MUT,p,5);edge(r,up(lv[2]),MUT,p,5);edge(x,up(lv[0]),MUT,p,5);edge(x,up(lv[1]),MUT,p,5);
+  node(x[0],x[1],'',MUT,p,7);node(r[0],r[1],'',RED,p,9);lv.forEach((q,j)=>emo(AE[t[j]],q[0],q[1]+4*K,34,p,AN[t[j]]))}
+function s0(w,h,st){sceneTitle('Хто кому рідня?',st);
+  const X=[.22,.5,.78].map(f=>W*f),ya=H*.3,yb=H*.69,pa=eob(stag(st,.3,.5));
+  emo('🐄',X[0],ya,64,pa,'корова');emo('🦛',X[1],ya,64,pa,'бегемот');emo('🐋',X[2],ya,64,pa,'кит');
+  link([X[0]+34*K,ya-14*K],[X[1]-34*K,ya-14*K],RED,stag(st,3,.5)*(1-stag(st,7.5,.5)*.8),40*K,true);
+  link([X[1]+34*K,ya-14*K],[X[2]-34*K,ya-14*K],GRN,stag(st,7.5,.6),40*K,false);
+  stamp('Мимо!',X[1],ya-72*K,26,RED,st,8,-.06);
+  const pb=eob(stag(st,11.5,.5));wcard(X[0],yb,'English','mother','new',pb);wcard(X[1],yb,'فارسی','mādar','no',pb);wcard(X[2],yb,'eesti','ema','uus',pb);
+  link([X[0],yb-40*K],[X[2],yb-40*K],RED,stag(st,14,.5)*(1-stag(st,19,.5)*.8),55*K,true);
+  link([X[0]+70*K,yb-38*K],[X[1]-70*K,yb-38*K],GRN,stag(st,19,.6),24*K,false);
+  stamp('Знову мимо!',X[1],yb+84*K,24,RED,st,19.5,.05);
+  if(st<11)caption('Хто найближчий до бегемота: корова чи кит?',st,1.2,H*.47);
+  else caption('Яка мова ближча до англійської: перська чи естонська?',st,11,H*.47)}
+
+function s1(w,h,st){sceneTitle('Філогенетичне дерево',st);
+  [0,1,2].forEach(i=>{const p=eob(stag(st,2+i*2,.5));if(p>0)rootedTree(i,W*[.2,.5,.8][i],H*.55,W*.27,H*.38,p,i===0&&st>14)});
+  if(st>2)chip('корінь — спільний предок',W*.5,H*.2,stag(st,2,.4),RED);
+  stamp('Лише 3 варіанти',W*.5,H*.92,24,GRN,st,9,-.03)}
+
+function s2(w,h,st){sceneTitle('Дерево → код',st);
+  const P=mapT(T0.P,W*.05,H*.22,W*.45,H*.55),S=pruf(T0.E,6),t0=3,dt=6;
+  const gAt=v=>{const k=S.findIndex(s=>s[0]===v);return k<0?9e9:t0+k*dt+2.5};
+  T0.E.forEach(([a,b])=>edge(P[a-1],P[b-1],'#94a3b8',1-stag(st,Math.min(gAt(a),gAt(b)),.5),5));
+  S.forEach((s,k)=>{const u=st-(t0+k*dt);if(u>0&&u<2.5)edge(P[s[0]-1],P[s[1]-1],RED,1,7)});
+  for(let v=1;v<=6;v++){const hot=S.some((s,k)=>s[0]===v&&st>t0+k*dt&&st<gAt(v));node(P[v-1][0],P[v-1][1],''+v,hot?RED:BLUE,1-stag(st,gAt(v),.5))}
+  fnt(18);ctx.fillStyle=MUT;txt('Код Прюфера',W*.6+81*K,H*.42);
+  codeBoxes(W*.6,H*.52,S.map(s=>s[1]),S.filter((s,k)=>st>t0+k*dt+2.5).length,-1);
+  stamp('4 4 5 5 — код дерева',W*.5,H*.84,28,GRN,st,26,-.03);
+  if(st<26)caption('Найменший листок — геть; записуємо його сусіда',st,1,H*.93)}
+
+function s3(w,h,st){sceneTitle('Код → дерево',st);
+  const P=mapT(T0.P,W*.5,H*.22,W*.45,H*.55),code=[4,4,5,5],E=unpruf(code),deg=[1,1,1,3,3,1],k0=Math.floor((st-4)/3);
+  E.forEach((e,k)=>edge(P[e[0]-1],P[e[1]-1],GRN,stag(st,4+k*3,.5),6));
+  for(let v=1;v<=6;v++){node(P[v-1][0],P[v-1][1],''+v,BLUE,1);
+    if(st>1.5){fnt(14,true);ctx.fillStyle=MUT;txt('ступінь '+deg[v-1],P[v-1][0],P[v-1][1]+36*K)}}
+  fnt(18);ctx.fillStyle=MUT;txt('Код',W*.06+81*K,H*.42);codeBoxes(W*.06,H*.52,code,4,k0>=0&&k0<4?k0:-1);
+  stamp('Те саме дерево!',W*.5,H*.86,28,GRN,st,18,-.03);
+  if(st<18)caption('ступінь = скільки разів у коді + 1',st,.5,H*.93)}
+
+function s4c(w,h,st){sceneTitle('Чотири міста: скільки мереж?',st);
+  const cell=W*.112,sz=cell*.9,Q=[[-.28,-.22],[.28,-.22],[.28,.18],[-.28,.18]];
+  for(let a=1;a<=4;a++)for(let b=1;b<=4;b++){const k=(a-1)*4+b-1,p=eob(stag(st,1+k*.5,.4));if(p<=0)continue;
+    const x=W*.5+((k%8)-3.5)*cell,y=H*.4+Math.floor(k/8)*cell*1.05,E=unpruf([a,b]);
+    ctx.globalAlpha=p;card(x-sz/2,y-sz/2,sz,sz);
+    if(a===b&&st>13){ctx.strokeStyle='#f59e0b';ctx.lineWidth=3*K;rr(x-sz/2,y-sz/2,sz,sz,10*K);ctx.stroke()}
+    ctx.globalAlpha=1;const V=Q.map(q=>[x+q[0]*sz,y+q[1]*sz]);
+    E.forEach(e=>edge(V[e[0]-1],V[e[1]-1],GRN,p,3.5));V.forEach(q=>node(q[0],q[1],'',BLUE,p,6));
+    ctx.globalAlpha=p;fnt(12,true);ctx.fillStyle=MUT;txt(a+' '+b,x,y+sz*.42);ctx.globalAlpha=1}
+  stamp('4² = 16 мереж',W*.5,H*.19,28,GRN,st,10,-.03);
+  if(st>13)caption('4 «зірки» і 12 «ланцюжків»',st,13,H*.93)}
+
+function s4(w,h,st){sceneTitle('Чому саме код?',st);
+  const rows=[[10,100,27],[100,1e4,651],[1000,1e6,9946]],x0=W*.08,bw=W*.5;
+  chip('матриця суміжності: n² біт',W*.28,H*.2,stag(st,1,.4),RED);chip('код Прюфера: (n−2)·log₂n біт',W*.7,H*.2,stag(st,1.3,.4),GRN);
+  rows.forEach((r,i)=>{const p=eob(stag(st,2+i*3.5,.5));if(p<=0)return;const y=H*(.37+i*.18);ctx.globalAlpha=p;
+    fnt(20,true);ctx.fillStyle=INK;txt('n = '+r[0],x0,y+6*K,'left');
+    [[r[1],RED],[r[2],GRN]].forEach((q,j)=>{const yy=y-16*K+j*30*K,wd=Math.max(8,bw*Math.log10(q[0])/6.2);
+      ctx.fillStyle=q[1];rr(x0+W*.14,yy-9*K,wd,18*K,5*K);ctx.fill();fnt(14,true);ctx.fillStyle=INK;txt(q[0]+' біт',x0+W*.14+wd+8*K,yy+5*K,'left')});ctx.globalAlpha=1});
+  stamp('Рівно n^(n−2) дерев — без зайвого',W*.5,H*.9,26,GRN,st,16,-.03)}
+
+function s5(w,h,st){sceneTitle('А якщо це не дерево?',st);
+  const cx=W/2,cy=H*.5,a=[cx-W*.1,cy],b=[cx+W*.1,cy],lv=[[-.3,-.22],[-.3,.22],[.3,-.22],[.3,.22]].map(q=>[cx+q[0]*W,cy+q[1]*H]),nm=['німецька','англійська','французька','італійська'];
+  const p=stag(st,1,.8);edge(a,b,MUT,p,5);lv.forEach((q,j)=>edge(j<2?a:b,q,MUT,p,5));node(a[0],a[1],'',MUT,p,7);node(b[0],b[1],'',MUT,p,7);
+  lv.forEach((q,j)=>chip(nm[j],q[0],q[1],stag(st,1.5+j*.3,.4),j===1||j===2?'#1e40af':MUT));
+  link([lv[2][0]-60*K,lv[2][1]+16*K],[lv[1][0]+60*K,lv[1][1]-14*K],RED,stag(st,8,.8),-70*K,false);
+  chip('запозичення слів',cx,cy+78*K,stag(st,9,.4),RED);
+  stamp('Мережа, а не дерево',W*.5,H*.83,28,RED,st,16,-.03);
+  if(st>12)caption('Так само бактерії обмінюються генами між видами',st,12,H*.94)}
+
+function s6(w,h,st){sceneTitle('Підсумок',st);
+  stamp('Дерево = код із n−2 чисел',W*.5,H*.45,34,GRN,st,1,-.03);stamp('А тепер — ваша черга!',W*.5,H*.66,28,'#e11d48',st,4,.03);confetti(W*.5,H*.45,st,4,60)}
+
+function s4f(w,h,st){sceneTitle('Формула Келі',st);
+  const p=eob(stag(st,.8,.7));if(p>0){const y=H*.4,x=W/2;ctx.save();ctx.translate(x,y);ctx.scale(p,p);ctx.translate(-x,-y);
+    fnt(120,true);const a=ctx.measureText('n').width;fnt(62,true);const b=ctx.measureText('n−2').width,x0=x-(a+b+6*K)/2;
+    ctx.fillStyle=INK;fnt(120,true);txt('n',x0,y+40*K,'left');ctx.fillStyle=RED;fnt(62,true);txt('n−2',x0+a+6*K,y-44*K,'left');ctx.restore()}
+  chip('в коді n − 2 місць',W*.3,H*.66,stag(st,3.5,.4),'#1e40af');chip('на кожному — одне з n чисел',W*.7,H*.66,stag(st,5,.4),'#1e40af');
+  chip('n = 4 → 16',W*.2,H*.84,stag(st,9,.4),GRN);chip('n = 5 → 125',W*.5,H*.84,stag(st,10.5,.4),GRN);chip('n = 10 → 100 000 000',W*.8,H*.84,stag(st,12,.4),GRN)}
+
+function s7(w,h,st){sceneTitle('А дерева з коренем?',st);
+  const a1=1-stag(st,10,.5);
+  if(a1>0){const cx=W*.5,cy=H*.52,r=[cx,cy-70*K],lA=[cx-130*K,cy+50*K],lB=[cx+130*K,cy+50*K],stub=[cx,cy-135*K],up=q=>[q[0],q[1]-30*K];
+    edge(stub,r,MUT,a1,5);edge(r,up(lA),MUT,a1,5);edge(r,up(lB),MUT,a1,5);node(r[0],r[1],'',RED,a1,9);
+    emo('🐋',lA[0],lA[1]+4*K,44,a1,'кит');emo('🦛',lB[0],lB[1]+4*K,44,a1,'бегемот');
+    [[(r[0]+lA[0])/2,(r[1]+lA[1])/2-8*K,'1'],[(r[0]+lB[0])/2,(r[1]+lB[1])/2-8*K,'2'],[cx,(stub[1]+r[1])/2,'3']].forEach((d,k)=>{const q=eob(stag(st,2+k*1.5,.4));if(q>0)node(d[0],d[1],d[2],'#f59e0b',a1*q,15)});
+    chip('куди прикріпити корову? Є 3 місця',W*.5,H*.2,a1*stag(st,1.5,.4),'#b45309')}
+  [0,1,2].forEach(i=>{const p=eob(stag(st,10.5+i,.5));if(p>0)rootedTree(i,W*[.2,.5,.8][i],H*.36,W*.27,H*.34,p,i===0&&st>14)});
+  const f=stag(st,15,.5);if(f>0){ctx.globalAlpha=f;fnt(38,true);ctx.fillStyle=INK;txt('(2n − 3)!! = 1 · 3 · 5 · … · (2n − 3)',W/2,H*.74);ctx.globalAlpha=1}
+  [['n = 3: 3',.1],['n = 4: 15',.27],['n = 5: 105',.44],['n = 10: 34 459 425',.69],['n = 20: ≈ 8·10²¹',.91]].forEach((q,k)=>chip(q[0],W*q[1],H*.88,stag(st,19+k*.6,.4),GRN))}
+
+const scenes=[
+ {tick:'Хук',dur:26,draw:s0,text:"Хто найближчий родич бегемота: корова чи кит? Здається, корова. Але ні! Найближчий родич бегемота — кит. А яка мова ближча до англійської: перська чи естонська? Знову не вгадали: англійська й перська походять з однієї індоєвропейської родини, а естонська — зовсім з іншої. Подивіться на слова: в англійській і перській вони схожі, в естонській — інші. Як же вчені будують такі дерева спорідненості?"},
+ {tick:'Дерево',dur:26,draw:s1,text:"Таке дерево називають філогенетичним, і малюють його з коренем — спільним предком. Листки — це види, а внутрішні вузли — предки, яких ми не бачили. Візьмемо кита, бегемота й корову. Скільки є способів поєднати їх у дерево з коренем? Лише три: кожна з пар може бути ближчою. Правильне — кит із бегемотом. А скільки таких дерев буде для більшої кількості видів — порахуємо трохи згодом."},
+ {tick:'Код',dur:34,draw:s2,text:"Тепер забудьмо про корінь і предків: розгляньмо просто дерево з пронумерованими вершинами. Як записати його коротко? Кодом Прюфера. Беремо листок із найменшим номером — це перший, і записуємо номер його сусіда: чотири. Видаляємо листок і повторюємо. Другий листок — теж чотири. Третій — п'ять. Четвертий — знову п'ять. Залишилось одне ребро — зупиняємось. Дерево з шести вершин стало кодом із чотирьох чисел."},
+ {tick:'Назад',dur:24,draw:s3,text:"А як повернути дерево з коду? Ступінь кожної вершини — це кількість її появ у коді плюс один. Вершини, яких у коді немає, — листки. Беремо найменший листок і з'єднуємо з першим числом коду, потім наступним, і так до кінця. Остання пара вершин — останнє ребро. Те саме дерево!"},
+ {tick:'Келі',dur:32,draw:s4c,text:"Дано чотири міста — кути квадрата. Магістраль, водопровід чи електромережа мають зв'язати їх без зайвих циклів, тобто деревом. Скільки існує таких мереж? Кожну можна записати кодом із двох чисел від одного до чотирьох. Усього шістнадцять кодів — і шістнадцять мереж: чотири зірки та дванадцять ланцюжків. Скільки кодів — стільки й мереж."},
+ {tick:'Формула',dur:22,draw:s4f,text:"Це формула Келі. У коді Прюфера є n мінус два місця, і на кожному може стояти одне з n чисел. Тому підписаних дерев на n вершинах рівно n у степені n мінус два. Для чотирьох вершин це шістнадцять, для п'яти — сто двадцять п'ять, а для десяти — сто мільйонів."},
+ {tick:'Чому код',dur:28,draw:s4,text:"Чому цей код такий добрий? Матриця суміжності для тисячі вершин займає мільйон бітів, а код Прюфера — менше десяти тисяч. Причому кожна послідовність відповідає рівно одному дереву, без жодного зайвого запису. Тому дерев саме стільки, скільки кодів. Для зберігання та підрахунку код найкращий, хоча перевірити, чи є ребро, швидше за матрицею."},
+ {tick:'Корені',dur:34,draw:s7,text:"А скільки дерев із коренем? Почнімо з кита й бегемота. Корову можна прикріпити в одне з трьох місць: до гілки кита, до гілки бегемота або над коренем — це й дає три дерева. Четвертий вид можна прикріпити вже в п'ять місць, п'ятий — у сім, і так далі. Тому дерев із коренем для n видів — добуток непарних чисел від одного до двох n мінус три. Це подвійний факторіал. Для десяти видів їх понад тридцять чотири мільйони, а для двадцяти — близько вісім тисяч мільярдів мільярдів."},
+ {tick:'Не дерево',dur:26,draw:s5,text:"Та є застереження: дерево — це лише модель. Англійська має германське ядро, але тисячі слів узяла з французької. Бактерії обмінюються генами між різними видами. Це горизонтальне перенесення, і на дереві воно виглядає як ребро, що замикає цикл. Тож реальна історія — інколи вже не дерево, а мережа."},
+ {tick:'Фінал',dur:12,draw:s6,text:"Отже, дерево на n вершинах — це просто код із n мінус двох чисел. А тепер — спробуйте самі!"},
+ {tick:'Гра',dur:14,noSub:true,isGame:true,draw:function(){Game.frame()},text:"Ваша черга! Клацайте по найменшому листку — його сусід потрапить у код. Повторюйте, поки не залишаться дві вершини."}];
+const cum=[];let acc0=0;scenes.forEach(s=>{cum.push(acc0);acc0+=s.dur});
+const TOTAL=acc0;
+/* ================= ГРА «КОД ПРЮФЕРА»: 3 РАУНДИ ================= */
+const Game=(function(){
+const el=id=>document.getElementById(id),layer=el('gameLayer'),gc=el('gameCanvas'),gx=gc.getContext('2d');
+let rd=1,n=6,E=[],pos=[],gone=[],code=[],err=0,hv=0,dpr=1,msg='',solved=false,opts=[],sel=[],elim=[],ans=0,qc=[];
+const nb=v=>E.filter(e=>e[0]===v||e[1]===v).map(e=>e[0]===v?e[1]:e[0]).filter(u=>gone.indexOf(u)<0);
+const minLeaf=()=>{for(let v=1;v<=n;v++)if(gone.indexOf(v)<0&&nb(v).length===1)return v;return 0};
+const expc=()=>pruf(E,n);
+function lay(Ed){const adj=Array.from({length:n+1},()=>[]);Ed.forEach(([a,b])=>{adj[a].push(b);adj[b].push(a)});
+  let r=1;for(let v=1;v<=n;v++)if(adj[v].length>adj[r].length)r=v;
+  const dep=[],ord=[];(function go(v,p,d){dep[v]=d;ord.push(v);adj[v].forEach(u=>{if(u!==p)go(u,v,d+1)})})(r,0,0);
+  const md=Math.max(...ord.map(v=>dep[v])),cnt={},tot={};ord.forEach(v=>{tot[dep[v]]=(tot[dep[v]]||0)+1});
+  const P=[];ord.forEach(v=>{const d=dep[v];cnt[d]=(cnt[d]||0)+1;P[v]=[cnt[d]/(tot[d]+1),md?d/md:.5]});return P}
+function refresh(){const T=['','Клацайте по листку з найменшим номером — його сусід запишеться в код.','Складіть код Прюфера для цього дерева: сусід найменшого листка, потім наступного… Вводьте цифри кнопками.','Дано код. Яке з чотирьох дерев йому відповідає? Клацніть по ньому.'];
+  el('gStatus').className='g-status'+(solved?' win':'');
+  let h='Раунд <b>'+rd+'/3</b> · помилок: '+err+'<br>Код: <b>'+(rd===3?qc.join(' '):code.concat(Array(Math.max(0,n-2-code.length)).fill('_')).join(' '))+'</b>';
+  if(solved)h+='<br>🎉 '+(rd<3?'Раунд пройдено! Тисніть «Далі».':'Усі раунди пройдені!');else if(msg)h+='<br>'+msg;
+  el('gStatus').innerHTML=h;el('gTitle').textContent='Гра: код Прюфера — раунд '+rd+'/3';el('gTask').textContent=T[rd];
+  el('gDigits').style.display=rd===2?'flex':'none';el('gNext').disabled=!solved;el('gNext').style.opacity=solved?1:.45;el('gNext').textContent=rd<3?'Далі →':'Нова гра';
+  document.querySelectorAll('#gSegP button').forEach(b=>b.classList.toggle('on',+b.dataset.v===n))}
+function fresh(){const c=[];for(let i=0;i<n-2;i++)c.push(1+Math.floor(Math.random()*n));E=unpruf(c);pos=lay(E);gone=[];code=[];err=0;hv=0;msg='';solved=false;sel=[];elim=[];
+  el('gDigits').innerHTML=Array.from({length:n},(_,i)=>'<button class="g-alt" data-d="'+(i+1)+'">'+(i+1)+'</button>').join('')+'<button class="g-alt" data-d="bk">⌫</button>';
+  if(rd===3){qc=expc().map(s=>s[1]);const seen=new Set([qc.join()]);opts=[{E:E,c:qc}];let g=0;
+    while(opts.length<4&&g++<300){const c=qc.slice(),i=Math.floor(Math.random()*c.length),v=1+Math.floor(Math.random()*n);if(v===c[i])continue;c[i]=v;const k=c.join();if(seen.has(k))continue;seen.add(k);opts.push({E:unpruf(c),c})}
+    opts.sort(()=>Math.random()-.5);opts.forEach(o=>o.pos=lay(o.E));ans=opts.findIndex(o=>o.c.join()===qc.join())}
+  refresh()}
+function pick(v){if(solved||gone.indexOf(v)>=0)return;hv=0;
+  if(v===minLeaf()){code.push(nb(v)[0]);gone.push(v);msg='Так! Сусід — '+code[code.length-1];if(code.length>=n-2)solved=true}
+  else{err++;msg=nb(v).length===1?'Це листок, але не найменший':'Це не листок: сусідів '+nb(v).length}refresh()}
+function digit(d){if(solved)return;if(d==='bk'){code.pop();msg='';refresh();return}
+  if(code.length>=n-2)return;code.push(+d);msg='';
+  if(code.length===n-2){const x=expc().map(s=>s[1]),k=code.findIndex((c,i)=>c!==x[i]);
+    if(k<0){solved=true;msg='Код вірний!'}else{err++;msg='Не збігається, перша помилка — позиція '+(k+1)+'. Видаліть зайве (⌫).'}}refresh()}
+function hint(){if(solved)return;hv=0;
+  if(rd===1){hv=minLeaf();msg='Зелений — найменший листок'}
+  else if(rd===2){const x=expc(),k=code.findIndex((c,i)=>c!==x[i]);if(k>=0)msg='Позиція '+(k+1)+' неправильна';else if(code.length<n-2){hv=x[code.length][0];msg='Видаліть листок '+hv+' (зелений): хто його сусід?'}}
+  else{const c=opts.map((o,i)=>i).filter(i=>i!==ans&&elim.indexOf(i)<0&&sel.indexOf(i)<0);if(c.length)elim.push(c[Math.floor(Math.random()*c.length)]);msg='Один зайвий варіант прибрано'}
+  refresh()}
+function answer(){if(solved)return;
+  if(rd===1){let g=0;while(!solved&&g++<20)pick(minLeaf())}
+  else if(rd===2){code=expc().map(s=>s[1]);solved=true;msg='Показано відповідь'}
+  else{sel.push(ans);solved=true;msg='Показано відповідь'}refresh()}
+function setVisible(v){layer.classList.toggle('on',!!v);if(v){if(!E.length)fresh();else refresh()}}
+const PX=(v,w,u)=>60*u+pos[v][0]*(w-120*u),PY=(v,h,u)=>60*u+pos[v][1]*(h-120*u);
+function tree(Ed,P,x0,y0,w,h,pad,u,r,gn,g0){const X=v=>x0+pad+P[v][0]*(w-2*pad),Y=v=>y0+pad+P[v][1]*(h-2*pad);
+  Ed.forEach(([a,b])=>{const g=gn.indexOf(a)>=0||gn.indexOf(b)>=0;gx.strokeStyle=g?'#e2e8f0':'#475569';gx.lineWidth=(g?3:5)*u*(r<15*u?.6:1);gx.setLineDash(g?[6*u,6*u]:[]);
+    gx.beginPath();gx.moveTo(X(a),Y(a));gx.lineTo(X(b),Y(b));gx.stroke()});gx.setLineDash([]);
+  for(let v=1;v<=n;v++){const g=gn.indexOf(v)>=0;gx.beginPath();gx.arc(X(v),Y(v),g?r*.8:r,0,TAU);gx.fillStyle=g?'#f1f5f9':(v===g0?GRN:BLUE);gx.fill();
+    gx.strokeStyle=g?'#cbd5e1':'#fff';gx.lineWidth=2.5*u;gx.stroke();gx.font='bold '+Math.round(r*.9)+'px Georgia,serif';gx.textAlign='center';gx.fillStyle=g?'#94a3b8':'#fff';gx.fillText(v,X(v),Y(v)+r*.32)}}
+function draw(){const w=gc.width,h=gc.height,u=dpr*K;gx.lineCap='round';
+  if(rd<3){tree(E,pos,0,0,w,h,60*u,u,19*u,gone,hv);return}
+  gx.font='bold '+Math.round(26*u)+'px Georgia,serif';gx.textAlign='center';gx.fillStyle='#2c2416';gx.fillText('Код: '+qc.join(' '),w/2,38*u);
+  opts.forEach((o,i)=>{const cw=w/2-12*u,ch=(h-56*u)/2-8*u,x0=(i%2)*w/2+6*u,y0=56*u+Math.floor(i/2)*(ch+8*u)+4*u,bad=sel.indexOf(i)>=0&&i!==ans,good=solved&&i===ans;
+    gx.save();gx.globalAlpha=elim.indexOf(i)>=0?.3:1;gx.lineWidth=(good||bad?4:2)*u;gx.strokeStyle=good?GRN:bad?RED:'#d4cfc7';gx.fillStyle='rgba(255,255,255,.7)';
+    gx.beginPath();gx.rect(x0,y0,cw,ch);gx.fill();gx.stroke();tree(o.E,o.pos,x0,y0,cw,ch,34*u,u,13*u,[],0);
+    gx.font='bold '+Math.round(15*u)+'px Georgia,serif';gx.textAlign='left';gx.fillStyle='#64748b';gx.fillText('ABCD'[i],x0+10*u,y0+20*u);gx.restore()})}
+function frame(){const r=gc.getBoundingClientRect();dpr=window.devicePixelRatio||1;const w=Math.max(10,Math.round(r.width*dpr)),h=Math.max(10,Math.round(r.height*dpr));
+  if(gc.width!==w||gc.height!==h){gc.width=w;gc.height=h}if(!E.length)fresh();gx.setTransform(1,0,0,1,0,0);gx.clearRect(0,0,w,h);draw()}
+gc.addEventListener('pointerdown',e=>{const r=gc.getBoundingClientRect(),x=(e.clientX-r.left)*dpr,y=(e.clientY-r.top)*dpr,u=dpr*K,w=gc.width,h=gc.height;
+  if(rd===3){if(solved||y<56*u)return;const i=(x<w/2?0:1)+(y<56*u+(h-56*u)/2?0:2);if(elim.indexOf(i)>=0||sel.indexOf(i)>=0)return;sel.push(i);
+    if(i===ans){solved=true;msg='Так! Дерево знайдено.'}else{err++;msg='Це дерево має код '+opts[i].c.join(' ')}refresh();return}
+  if(rd!==1)return;let best=0,bd=1e9;for(let v=1;v<=n;v++){const d=Math.hypot(PX(v,w,u)-x,PY(v,h,u)-y);if(d<bd){bd=d;best=v}}if(bd<28*u)pick(best)});
+el('gDigits').addEventListener('click',e=>{const d=e.target&&e.target.dataset&&e.target.dataset.d;if(d)digit(d)});
+el('gHint').addEventListener('click',hint);el('gReset').addEventListener('click',fresh);el('gAns').addEventListener('click',answer);
+el('gNext').addEventListener('click',()=>{if(!solved)return;rd=rd<3?rd+1:1;fresh()});
+document.querySelectorAll('#gSegP button').forEach(b=>b.addEventListener('click',()=>{n=+b.dataset.v;fresh()}));
+fresh();
+return{frame,setVisible,_r:x=>{rd=x;fresh()}}
+})();
+
+/* ================= TTS (гібрид) ================= */
+const synth=window.speechSynthesis;
+let engine='google',userPicked=false,gAudio=null,gToken=0;
+let voiceScene=-1,ttsDone=true,ttsActive=false;
+function detect(){if(userPicked)return;const vs=(synth&&synth.getVoices?synth.getVoices():[])||[];
+  const uk=vs.some(v=>v.lang&&v.lang.toLowerCase().startsWith('uk'));
+  updateEngineUI()}
+if(synth){detect();if(synth.onvoiceschanged!==undefined)synth.onvoiceschanged=detect}
+function updateEngineUI(){engineSeg.querySelectorAll('button').forEach(b=>
+  b.classList.toggle('on',b.dataset.e===engine))}
+function splitChunks(text,maxLen){const ss=text.match(/[^.!?]+[.!?]+/g)||[text];
+  const out=[];let cur='';ss.forEach(s=>{if((cur+s).length>maxLen&&cur){out.push(cur.trim());cur=s}else cur+=s});
+  if(cur)out.push(cur.trim());return out}
+/* ---- Google TTS (неофіційний): два ендпоїнти, при збої → відкат на Web Speech ---- */
+const G_URLS=[
+  q=>'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=uk&q='+encodeURIComponent(q),
+  q=>'https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=uk&q='+encodeURIComponent(q)];
+let gIdx=0,gOk=false;
+function ukVoice(){const vs=(synth&&synth.getVoices?synth.getVoices():[])||[];
+  return vs.find(v=>v.lang&&v.lang.toLowerCase().replace('_','-').startsWith('uk'))||null}
+/* Результат: 'ok' | 'fail' (помилка або 6 с без старту) | 'skip' (браузер заблокував автоплей) */
+function gPlay(url){return new Promise(res=>{
+  const a=new Audio(url);gAudio=a;let fin=false,started=false;
+  const end=r=>{if(!fin){fin=true;clearTimeout(tm);res(r)}};
+  const tm=setTimeout(()=>{if(!started){try{a.pause()}catch(e){}end('fail')}},6000);
+  a.onplaying=()=>{started=true;clearTimeout(tm);gOk=true};
+  a.onended=()=>end('ok');
+  a.onerror=()=>end(started?'ok':'fail');
+  a.play().catch(e=>{const n=e&&e.name;if(n==='NotAllowedError')end('skip');else if(n!=='AbortError')end('fail')})})}
+function gFallback(rest,idx){
+  console.warn('Google TTS недоступний → відкат на Web Speech');
+  hfMsg='⚠ Google TTS недоступний → Web Speech';
+  engine='webspeech';updateEngineUI();
+  if(rest&&rest.trim())speak(rest,idx);else{if(voiceScene===idx){ttsDone=true;ttsActive=false}}}
+function speak(text,sceneIdx){voiceScene=sceneIdx;ttsDone=false;ttsActive=true;
+  const done=()=>{if(voiceScene===sceneIdx){ttsDone=true;ttsActive=false}};
+  if(engine==='none'){ttsDone=true;ttsActive=false;return}
+  if(engine==='webspeech'){const v=synth&&ukVoice();
+    if(!v){engine='none';updateEngineUI();hfMsg='⚠ Немає українського голосу → тихо';done();return}
+    try{if(synth.speaking||synth.pending)synth.cancel()}catch(e){}
+    const u=new SpeechSynthesisUtterance(text);u.voice=v;u.lang=v.lang;
+    u.rate=clamp(0.95*speed,0.5,2);u.pitch=1;
+    u.onend=done;u.onerror=e=>{console.warn('Web Speech:',e&&e.error);done()};
+    synth.speak(u);if(synth.paused)synth.resume()}
+  else if(engine==='hf'){const myTok=++gToken;hfWait=true;
+    (async()=>{
+      if(!await hfEnsure()){if(myTok===gToken)hfFallback(text,sceneIdx);return}
+      /* у черзі лишаємо лише потрібне: ця сцена + наступна (після перемотування старі заявки не гальмують нові) */
+      {const want=new Set(),vv=hfVoiceSel.value;
+        [sceneIdx,sceneIdx+1].forEach(j=>{const s=scenes[j];if(s)hfSplit(s.text,110).forEach(c=>want.add(vv+'|'+c))});
+        hfPending.forEach(j=>{if(!want.has(j.key)){j.skipped=true;hfCache.delete(j.key);hfPending.delete(j)}})}
+      const ch=hfSplit(text,110),ps=ch.map(c=>hfSynth(c));ps.forEach(p=>p.catch(()=>{}));
+      hfPrefetch(sceneIdx+1); /* уся наступна сцена генерується, поки звучить поточна */
+      for(let i=0;i<ch.length;i++){let url;
+        if(i>0)hfWait=true;try{url=await ps[i]}catch(e){console.error('UA нейро:',e);if(myTok===gToken)hfFallback(text,sceneIdx);return}
+        if(myTok!==gToken)return;
+        hfWait=false;
+        await new Promise(res=>{const a=new Audio(url);a.playbackRate=speed;gAudio=a;
+          const txt=ch[i];a.addEventListener('loadedmetadata',()=>console.log('[UA нейро]',txt.length,'знаків →',a.duration.toFixed(1),'с:',txt));
+          a.onended=res;a.onerror=res;
+          const pl=a.play();if(pl)pl.catch(e=>{if(!(e&&e.name==='AbortError'))res()});
+          if(isPaused)a.pause()});
+        if(myTok!==gToken)return}
+      done()})().catch(e=>{console.error(e);hfWait=false;done()})}
+  else{const myTok=++gToken,ch=splitChunks(text,180);
+    (async()=>{
+      for(let i=0;i<ch.length;i++){let r='fail';
+        for(let k=0;k<G_URLS.length&&r==='fail';k++){const ix=(gIdx+k)%G_URLS.length;
+          r=await gPlay(G_URLS[ix](ch[i]));
+          if(myTok!==gToken)return;
+          if(r!=='fail')gIdx=ix}
+        if(r==='fail'){gFallback(ch.slice(i).join(' '),sceneIdx);return}}
+      done()})().catch(e=>{console.error(e);done()})}}
+/* ---- UA нейро: демо robinhad/ukrainian-tts на Hugging Face (відкат -> Google TTS) ---- */
+const HF_SPACE='robinhad/ukrainian-tts',HF_HOST='https://robinhad-ukrainian-tts.hf.space',
+  HF_CLIENT='https://cdn.jsdelivr.net/npm/@gradio/client@2.6.0/dist/index.min.js';
+const hfVoiceSel=document.getElementById('hfVoice');
+let hfApp=null,hfConn=null,hfMsg='',hfWait=false,hfQ=Promise.resolve(),hfApi='/predict';const hfCache=new Map(),hfPending=new Set();
+const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout '+ms)),ms))]);
+function hfEnsure(){if(hfConn)return hfConn;
+  hfConn=(async()=>{hfMsg='⏳';const m=await import(HF_CLIENT);
+    hfApp=await withTimeout(m.Client.connect(HF_SPACE),60000);hfMsg='';return true})()
+    .catch(e=>{console.error('UA нейро:',e);hfMsg='⚠ UA нейро недоступне → Google';hfConn=null;return false});
+  return hfConn}
+/* Забираємо аудіо в blob (кеш у пам'яті): коли дійде до сцени, воно вже в браузері. Якщо CORS не дозволяє — лишаємо звичайний URL */
+async function hfBlob(u){try{const r=await withTimeout(fetch(u),30000);if(!r.ok)throw new Error(r.status);
+  return URL.createObjectURL(await r.blob())}catch(e){return u}}
+function hfSynth(t){const v=hfVoiceSel.value,k=v+'|'+t;if(hfCache.has(k))return hfCache.get(k);
+  const job={key:k,started:false,skipped:false};hfPending.add(job);
+  const run=hfQ=hfQ.catch(()=>{}).then(async()=>{hfPending.delete(job);
+    if(job.skipped)throw new Error('skipped');job.started=true;let last;
+    for(const n of [hfApi,'/tts']){const t0=Date.now();
+      try{const r=await withTimeout(hfApp.predict(n,[t,v]),90000);
+        const f=r&&r.data&&r.data[0];const u=f&&(f.url||(f.path&&HF_HOST+'/file='+f.path));
+        if(!u)throw new Error('немає аудіо у відповіді');hfApi=n;return u}
+      catch(e){last=e;if(Date.now()-t0>4000)break}}
+    throw last});
+  const pr=run.then(hfBlob);
+  hfCache.set(k,pr);pr.catch(()=>{if(hfCache.get(k)===pr)hfCache.delete(k)});return pr}
+function hfPrefetch(i){const s=scenes[i];if(!s)return;hfSplit(s.text,110).forEach(c=>hfSynth(c).catch(()=>{}))}
+/* Ділимо лише за межами речень (. ! ? …): кома чи тире всередині речення не повинні ставати «крапкою».
+   Короткі сусідні речення склеюємо до max знаків. Дуже довге речення (>220) ділимо лише за ; або : */
+function hfSplit(text,max){
+  const ss=(text.match(/[^.!?…]+[.!?…]+["»”)]*|[^.!?…]+$/g)||[text]).map(x=>x.trim()).filter(Boolean);
+  const out=[];
+  ss.forEach(x=>{if(x.length<=220){out.push(x);return}
+    let cur='';x.split(/(?<=[;:])\s+/).forEach(q=>{
+      if(cur&&(cur+' '+q).length>max){out.push(cur);cur=q}else cur=cur?cur+' '+q:q});
+    if(cur)out.push(cur)});
+  const m=[];out.forEach(q=>{if(m.length&&(m[m.length-1]+' '+q).length<=max)m[m.length-1]+=' '+q;else m.push(q)});
+  return m.length?m:[text]}
+function hfFallback(text,idx){hfWait=false;engine='google';updateEngineUI();
+  if(!hfMsg)hfMsg='⚠ UA нейро недоступне → Google';speak(text,idx)}
+hfVoiceSel.onchange=()=>{if(engine==='hf'&&isPlaying&&!isPaused){stopSpeaking();speakScene()}};
+
+function stopSpeaking(){hfWait=false;gToken++;if(gAudio){gAudio.pause();gAudio=null}
+  if(synth){try{synth.cancel()}catch(e){}}
+  ttsActive=false;ttsDone=true}
+
+/* ================= ПЛЕЄР ================= */
+let currentScene=0,sceneTime=0,globalTime=0,isPlaying=false,isPaused=false,
+    hasStarted=false,finished=false,holdTimer=0,speed=1;
+function setPlayIcon(playing){icoPlay.style.display=playing?'none':'';
+  icoPause.style.display=playing?'':'none'}
+function setSubtitle(sc){if(chkSubs.checked&&!sc.noSub){subtitleEl.innerHTML=sc.text;
+  subtitleEl.style.opacity='1'}else subtitleEl.style.opacity='0'}
+function startScene(i){currentScene=clamp(i,0,scenes.length-1);sceneTime=0;holdTimer=0;
+  const sc=scenes[currentScene];setSubtitle(sc);stopSpeaking();
+  if(isPlaying)speak(sc.text,currentScene);updateSceneButtons()}
+function speakScene(){const sc=scenes[currentScene];setSubtitle(sc);speak(sc.text,currentScene)}
+function startShow(){hasStarted=true;finished=false;isPlaying=true;isPaused=false;
+  setPlayIcon(true);startScene(0)}
+function doPause(){isPaused=true;setPlayIcon(false);
+  if(engine==='webspeech'&&synth)synth.pause();
+  if((engine==='google'||engine==='hf')&&gAudio)gAudio.pause()}
+function doResume(){isPaused=false;setPlayIcon(true);
+  if(engine==='webspeech'&&synth)synth.resume();
+  if((engine==='google'||engine==='hf')&&gAudio)gAudio.play()}
+function togglePlay(){if(!hasStarted){startShow();return}
+  if(!isPlaying){finished=false;isPlaying=true;isPaused=false;setPlayIcon(true);speakScene();return}
+  isPaused?doResume():doPause()}
+function stopShow(){isPlaying=false;isPaused=false;finished=false;setPlayIcon(false);
+  stopSpeaking();currentScene=0;sceneTime=0;holdTimer=0;
+  subtitleEl.style.opacity='0';updateSceneButtons()}
+function seekScene(i){i=clamp(i,0,scenes.length-1);stopSpeaking();finished=false;
+  currentScene=i;sceneTime=0;holdTimer=0;updateSceneButtons();
+  if(isPlaying&&!isPaused)speakScene();else setSubtitle(scenes[i])}
+function seekTime(T){let i=0;while(i<scenes.length-1&&T>=cum[i+1])i++;
+  stopSpeaking();finished=false;currentScene=i;sceneTime=T-cum[i];holdTimer=0;
+  updateSceneButtons();if(isPlaying&&!isPaused)speakScene();else setSubtitle(scenes[i])}
+
+/* ================= ОБРОБНИКИ ================= */
+btnPlay.onclick=togglePlay;
+btnStop.onclick=stopShow;
+btnNext.onclick=()=>seekScene(currentScene+1);
+btnPrev.onclick=()=>seekScene(currentScene-1);
+progressZone.onclick=e=>{const r=progressZone.getBoundingClientRect();
+  seekTime(clamp((e.clientX-r.left)/r.width,0,1)*TOTAL)};
+engineSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{userPicked=true;
+  engine=b.dataset.e;if(engine!=='hf')hfMsg='';updateEngineUI();stopSpeaking();if(engine==='hf')hfEnsure();
+  if(isPlaying&&!isPaused)speakScene()});
+speedSel.onchange=()=>{speed=parseFloat(speedSel.value)};
+chkSubs.onchange=()=>{if(!chkSubs.checked)subtitleEl.style.opacity='0';
+  else setSubtitle(scenes[currentScene])};
+chkDebug.onchange=()=>{debugSection.style.display=chkDebug.checked?'block':'none'};
+document.addEventListener('keydown',e=>{
+  if(e.target&&e.target.closest&&e.target.closest('#gameLayer'))return;
+  if(e.code==='Space'){e.preventDefault();togglePlay()}
+  else if(e.code==='ArrowRight')seekScene(currentScene+1);
+  else if(e.code==='ArrowLeft')seekScene(currentScene-1);
+  else if(e.code==='KeyR')stopShow()});
+canvas.addEventListener('click',()=>{if(!hasStarted)startShow()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)lastTs=performance.now()});
+
+/* ================= ЗАСІЧКИ / ДЕБАГ ================= */
+const tickEls=[];
+scenes.forEach((sc,i)=>{const t=document.createElement('div');t.className='tick';
+  t.style.left=(cum[i]/TOTAL*100)+'%';t.title=(i+1)+'. '+sc.tick+' ('+sc.dur+' с)';
+  t.onclick=e=>{e.stopPropagation();seekScene(i)};ticksLayer.appendChild(t);tickEls.push(t);
+  const l=document.createElement('div');l.className='tick-label';l.style.left=(cum[i]/TOTAL*100)+'%';
+  l.textContent=sc.tick;ticksLayer.appendChild(l)});
+function updateLabelsVis(){ticksLayer.querySelectorAll('.tick-label').forEach(l=>
+  l.style.display=chkLabels.checked?'':'none')}
+chkLabels.onchange=updateLabelsVis;updateLabelsVis();
+scenes.forEach((sc,i)=>{const b=document.createElement('button');
+  b.textContent=fmt(cum[i])+' · '+sc.tick;b.onclick=()=>seekScene(i);
+  sceneListEl.appendChild(b)});
+function updateSceneButtons(){Game.setVisible(!!scenes[currentScene].isGame);
+  sceneListEl.querySelectorAll('button').forEach((b,i)=>
+  b.classList.toggle('active',i===currentScene));
+  sceneIndicator.textContent=(currentScene+1)+'/'+scenes.length+' · '+scenes[currentScene].tick}
+function fmt(s){s=Math.floor(s);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function updateHud(){const sc=scenes[currentScene];
+  const cur=cum[currentScene]+Math.min(sceneTime,sc.dur);
+  progressFill.style.width=(cur/TOTAL*100)+'%';
+  timeDisp.textContent=fmt(cur)+' / '+fmt(TOTAL);
+  tickEls.forEach((t,i)=>t.classList.toggle('active',i===currentScene));
+  voiceState.textContent=(engine==='none'?'🔇':(ttsActive?'🔊':'🔈'))+(hfMsg?' '+hfMsg:'');
+  voiceState.classList.toggle('active',ttsActive)}
+updateSceneButtons();
+
+/* ================= ГОЛОВНИЙ ЦИКЛ ================= */
+let lastTs=performance.now();
+function overlayStart(){ctx.fillStyle='rgba(8,12,26,.55)';ctx.fillRect(0,0,W,H);
+  const pu=1+0.05*Math.sin(performance.now()/300);
+  ctx.save();ctx.translate(W/2,H/2-30);ctx.scale(pu,pu);
+  ctx.beginPath();ctx.arc(0,0,54,0,TAU);ctx.fillStyle='rgba(255,255,255,.95)';ctx.fill();
+  ctx.strokeStyle='#e11d48';ctx.lineWidth=5;ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-14,-22);ctx.lineTo(-14,22);ctx.lineTo(24,0);ctx.closePath();
+  ctx.fillStyle='#e11d48';ctx.fill();ctx.restore();
+  fnt(22,true);ctx.fillStyle='#fff';txt('Натисніть, щоб дивитись з озвученням',W/2,H/2+70);
+  fnt(15);ctx.fillStyle='rgba(255,255,255,.85)';
+  txt('Space — пауза · ←/→ — сцени · клік по шкалі — перемотка',W/2,H/2+102)}
+
+function frame(ts){const rawDt=Math.min(0.1,(ts-lastTs)/1000);lastTs=ts;
+  if(isPlaying&&!isPaused&&!(engine==='hf'&&hfWait)){const dt=rawDt*speed;globalTime+=dt;sceneTime+=dt;
+    const sc=scenes[currentScene];
+    const animDone=sceneTime>=sc.dur;
+    const voiceOK=engine==='none'||ttsDone||sceneTime>sc.dur+(engine==='webspeech'?30:60);
+    if(animDone&&voiceOK){holdTimer+=dt;
+      if(holdTimer>=0.7){
+        if(currentScene<scenes.length-1)startScene(currentScene+1);
+        else{finished=true;isPlaying=false;isPaused=false;setPlayIcon(false);stopSpeaking()}}}
+    else holdTimer=0}
+  gtNow=globalTime; /* критично: мерехтіння ліхтарів, курсор, шеврони, сніг */
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#fbf7f0');g.addColorStop(1,'#f2ebdd');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  scenes[currentScene].draw(W,H,sceneTime,globalTime);
+  const f=1-stag(sceneTime,0,0.45);
+  if(f>0&&hasStarted){ctx.fillStyle='rgba(251,247,240,'+f*0.6+')';ctx.fillRect(0,0,W,H)}
+  if(hasStarted&&engine==='hf'&&hfWait){ctx.fillStyle='rgba(30,30,30,.75)';ctx.font='bold 16px Arial';ctx.textAlign='left';ctx.fillText('Готую озвучення…',16,H-16)}
+  if(!hasStarted)overlayStart();
+  updateHud();
+  requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
