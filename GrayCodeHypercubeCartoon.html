@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Без Referer: на GitHub Pages неофіційний Google TTS інакше відхиляє запити (з file:// Referer не надсилається) -->
+<meta name="referrer" content="no-referrer">
+<title>Код Грея і гамільтонів цикл на гіперкубі — анімована презентація</title>
+<style>
+:root{--bg:#f6f1e7;--txt:#2c2416;--mut:#6b5d4f;--red:#e11d48}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Georgia,'Times New Roman',serif;background:var(--bg);color:var(--txt);
+  display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:18px}
+.container{width:100%;max-width:1240px;display:flex;flex-direction:column}
+.presentation{width:100%;aspect-ratio:16/9;background:#fff;border:2px solid #d4cfc7;
+  border-radius:10px 10px 0 0;position:relative;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+canvas{width:100%;height:100%;display:block;cursor:pointer}
+.scene-indicator{position:absolute;top:14px;right:14px;background:rgba(30,64,175,.92);color:#fff;
+  padding:5px 12px;border-radius:5px;font-size:13px;font-weight:bold;pointer-events:none}
+.subtitle{position:absolute;left:0;right:0;bottom:10px;width:100%;box-sizing:border-box;
+  padding:0 4%;background:transparent;color:#fff;font-weight:bold;
+  font-size:clamp(15px,2.1vw,26px);text-align:center;line-height:1.4;
+  text-shadow:0 0 3px #000,0 0 6px #000,0 2px 5px rgba(0,0,0,.95),0 0 12px rgba(0,0,0,.7);
+  transition:opacity .3s;pointer-events:none}
+.controls{background:linear-gradient(#241c15,#15100b);border-radius:0 0 10px 10px;padding:6px 14px 12px}
+.progress-zone{position:relative;height:40px;cursor:pointer}
+.progress-track{position:absolute;left:0;right:0;top:15px;height:5px;background:rgba(255,255,255,.16);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;width:0;background:linear-gradient(90deg,#e11d48,#f43f5e);border-radius:3px}
+.tick{position:absolute;top:11px;width:3px;height:13px;background:rgba(255,255,255,.45);border-radius:2px;transform:translateX(-1px)}
+.tick:hover{background:#fff}
+.tick.active{background:#fbbf24;box-shadow:0 0 6px #fbbf24}
+.tick-label{position:absolute;top:27px;transform:translateX(-50%);font-size:10px;color:rgba(255,255,255,.62);
+  white-space:nowrap;pointer-events:none;font-family:Arial,sans-serif}
+.btn-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.ctl{background:transparent;border:none;cursor:pointer;width:34px;height:34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;transition:background .2s}
+.ctl:hover{background:rgba(255,255,255,.12)}
+.ctl svg{width:19px;height:19px;fill:#fff}
+.time{color:#fff;font:13px Arial;margin-left:4px;min-width:96px}
+.seg{display:flex;border:1px solid rgba(255,255,255,.18);border-radius:7px;overflow:hidden}
+.seg button{background:transparent;border:none;color:#cfc7ba;padding:5px 10px;font:12px Arial;cursor:pointer}
+.seg button+button{border-left:1px solid rgba(255,255,255,.14)}
+.seg button.on{background:var(--red);color:#fff}
+select{background:#2a221b;color:#eee;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px 6px;font:12px Arial}
+.chk{display:flex;align-items:center;gap:5px;color:#d9d2c5;font:13px Arial;cursor:pointer;user-select:none}
+.chk input{accent-color:var(--red);width:15px;height:15px;cursor:pointer}
+.voice{margin-left:auto;color:#fff;font:15px Arial;background:rgba(255,255,255,.1);border-radius:5px;padding:3px 9px}
+.voice.active{animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.45}}
+.debug-section{margin-top:14px;background:#fff;border:2px solid #d4cfc7;border-radius:8px;padding:14px}
+.debug-section h3{font-size:14px;color:var(--mut);margin-bottom:10px}
+.scene-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:7px}
+.scene-list button{padding:7px;border:2px solid #d4cfc7;border-radius:6px;background:#fff;color:var(--txt);
+  font:12px Georgia;cursor:pointer;text-align:left}
+.scene-list button:hover{border-color:#1e40af}
+.scene-list button.active{background:#1e40af;color:#fff;border-color:#1e40af}
+/* ---- гра «Чарівне слово» ---- */
+#gameLayer{--gb:#2563eb;--gr:#dc2626;position:absolute;inset:0;display:none;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);
+  gap:calc(12px*var(--k,1));padding:calc(12px*var(--k,1));background:linear-gradient(#fbf7f0,#f2ebdd);
+  font-family:Georgia,'Times New Roman',serif;color:var(--txt)}
+#gameLayer.on{display:grid}
+.g-graph{position:relative;min-width:0;min-height:0}
+#gameCanvas{width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+.g-busy{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-size:calc(22px*var(--k,1));
+  font-weight:bold;color:var(--mut);background:rgba(251,247,240,.85)}
+.g-panel{min-width:0;min-height:0;overflow:auto;background:rgba(255,255,255,.93);border:2px solid #d4cfc7;
+  border-radius:calc(12px*var(--k,1));padding:calc(12px*var(--k,1)) calc(16px*var(--k,1));display:flex;flex-direction:column;
+  gap:calc(9px*var(--k,1));box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.g-title{font-size:calc(26px*var(--k,1));font-weight:bold;line-height:1.15}
+.g-title:after{content:'';display:block;width:calc(90px*var(--k,1));height:3px;background:var(--red);margin-top:calc(6px*var(--k,1))}
+.g-task{font-size:calc(17px*var(--k,1));line-height:1.4}
+.g-task .g-t{display:inline-block;min-width:1.8em;text-align:center;background:#f59e0b;color:#fff;border-radius:999px;padding:0 .35em;font-weight:bold}
+.g-slots{display:flex;gap:calc(10px*var(--k,1));justify-content:center;margin:calc(2px*var(--k,1)) 0}
+.g-slot{width:calc(52px*var(--k,1));height:calc(52px*var(--k,1));border:2px dashed #cbbfae;border-radius:50%;display:flex;
+  align-items:center;justify-content:center;font-size:calc(22px*var(--k,1));font-weight:bold;color:#fff;transition:transform .15s}
+.g-slot.f{border:3px solid rgba(15,23,42,.35)}
+.g-slot.f.B{background:var(--gb)}.g-slot.f.R{background:var(--gr)}
+.g-slot.act{transform:scale(1.18);box-shadow:0 0 0 4px rgba(251,191,36,.7)}
+.g-keys{display:flex;gap:calc(10px*var(--k,1));justify-content:center}
+.g-key{width:calc(54px*var(--k,1));height:calc(54px*var(--k,1));border-radius:50%;border:3px solid rgba(15,23,42,.25);
+  font:bold calc(22px*var(--k,1)) Georgia,serif;cursor:pointer;color:#fff;background:#64748b}
+.g-key.b{background:var(--gb)}.g-key.r{background:var(--gr)}
+.g-key.s{font-size:calc(18px*var(--k,1));background:#e7e1d6;color:#4a3f2e}
+.g-key:hover:not(:disabled){filter:brightness(1.1)}.g-key:active:not(:disabled){transform:scale(.94)}
+.g-key:disabled{opacity:.4;cursor:default}
+.g-row{display:flex;gap:calc(8px*var(--k,1));flex-wrap:wrap;justify-content:center;align-items:center}
+.g-go{background:var(--red);color:#fff;border:none;border-radius:calc(9px*var(--k,1));padding:calc(9px*var(--k,1)) calc(26px*var(--k,1));
+  font:bold calc(18px*var(--k,1)) Georgia,serif;cursor:pointer;box-shadow:0 3px 0 #9f1239}
+.g-go:disabled{opacity:.45;cursor:default;box-shadow:none}
+.g-alt{background:#fff;border:2px solid #d4cfc7;border-radius:calc(9px*var(--k,1));padding:calc(7px*var(--k,1)) calc(12px*var(--k,1));
+  font:calc(13px*var(--k,1)) Georgia,serif;color:var(--txt);cursor:pointer}
+.g-alt:hover:not(:disabled){border-color:#1e40af}.g-alt:disabled{opacity:.45;cursor:default}
+.g-status{font-size:calc(15px*var(--k,1));line-height:1.4;min-height:calc(64px*var(--k,1));color:#4a3f2e}
+.g-status.win{color:#15803d;font-weight:bold}
+.g-status .cb,.g-slot .cb{color:var(--gb)}.g-status .cr{color:var(--gr)}
+.g-settings{margin-top:auto;display:flex;flex-wrap:wrap;gap:calc(8px*var(--k,1)) calc(14px*var(--k,1));align-items:center;
+  font-size:calc(13px*var(--k,1));color:var(--mut);border-top:1px solid #e7e1d6;padding-top:calc(8px*var(--k,1))}
+.g-seg{display:inline-flex;border:1px solid #d4cfc7;border-radius:7px;overflow:hidden;vertical-align:middle;margin-left:4px}
+.g-seg button{background:#fff;border:none;padding:calc(4px*var(--k,1)) calc(9px*var(--k,1));font:calc(13px*var(--k,1)) Georgia,serif;cursor:pointer;color:var(--txt)}
+.g-seg button+button{border-left:1px solid #d4cfc7}
+.g-seg button.on{background:#1e40af;color:#fff}
+.g-seg button.on{background:#1e40af;color:#fff}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="presentation">
+    <canvas id="canvas"></canvas>
+    <div id="gameLayer">
+      <div class="g-graph"><canvas id="gameCanvas"></canvas><div class="g-busy" id="gBusy"></div></div>
+      <div class="g-panel">
+<div class="g-title" id="gTitle">Гра: цикл на гіперкубі</div>
+        <div class="g-task" id="gTask"></div>
+        <div class="g-row"><button class="g-go" id="gHint">Підказка</button><button class="g-alt" id="gBack">Крок назад</button><button class="g-alt" id="gReset">Спочатку</button><button class="g-go" id="gNext" disabled>Далі →</button></div>
+        <div class="g-status" id="gStatus"></div>
+      </div>
+    </div>
+    <div class="scene-indicator" id="sceneIndicator"></div>
+    <div class="subtitle" id="subtitle" style="opacity:0"></div>
+  </div>
+
+  <div class="controls">
+    <div class="progress-zone" id="progressZone">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div id="ticksLayer"></div>
+    </div>
+    <div class="btn-row">
+      <button class="ctl" id="btnPlay" title="Грати / Пауза (Space)"><span id="icoPlay"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span><span id="icoPause" style="display:none"><svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg></span></button>
+      <button class="ctl" id="btnStop" title="Спочатку (R)"><svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg></button>
+      <button class="ctl" id="btnPrev" title="Попередня сцена (←)"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+      <button class="ctl" id="btnNext" title="Наступна сцена (→)"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+      <span class="time" id="timeDisp">0:00 / 0:00</span>
+      <div class="seg" id="engineSeg" title="Рушій озвучення">
+        <button data-e="hf" title="Українська нейромережа (безкоштовне демо на Hugging Face)">UA нейро</button>
+        <button data-e="webspeech">Web Speech</button>
+        <button data-e="google" class="on">Google TTS</button>
+        <button data-e="none">Тихо</button>
+      </div>
+      <select id="hfVoice" title="Голос (для UA нейро)"><option value="Тетяна (жіночий) 👩">Тетяна</option><option value="Лада (жіночий) 👩" selected>Лада</option><option value="Дмитро (чоловічий) 👨">Дмитро</option><option value="Микита (чоловічий) 👨">Микита</option><option value="Олекса (чоловічий) 👨">Олекса</option></select>
+      <select id="speedSel" title="Швидкість">
+        <option value="0.75">0.75×</option><option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option><option value="1.5">1.5×</option>
+      </select>
+      <label class="chk"><input type="checkbox" id="chkSubs"><span>Субтитри</span></label>
+      <label class="chk"><input type="checkbox" id="chkLabels" checked><span>Назви сцен</span></label>
+      <label class="chk"><input type="checkbox" id="chkDebug"><span>Дебаг</span></label>
+      <span class="voice" id="voiceState">🔈</span>
+    </div>
+  </div>
+
+  <div class="debug-section" id="debugSection" style="display:none">
+    <h3>🔧 Перейти до сцени</h3>
+    <div class="scene-list" id="sceneList"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================= БАЗА ================= */
+const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d');
+const subtitleEl=document.getElementById('subtitle'),sceneIndicator=document.getElementById('sceneIndicator');
+const progressZone=document.getElementById('progressZone'),progressFill=document.getElementById('progressFill');
+const timeDisp=document.getElementById('timeDisp'),voiceState=document.getElementById('voiceState');
+const ticksLayer=document.getElementById('ticksLayer'),sceneListEl=document.getElementById('sceneList');
+const debugSection=document.getElementById('debugSection');
+const chkSubs=document.getElementById('chkSubs'),chkLabels=document.getElementById('chkLabels'),chkDebug=document.getElementById('chkDebug');
+const btnPlay=document.getElementById('btnPlay'),btnStop=document.getElementById('btnStop'),
+      btnPrev=document.getElementById('btnPrev'),btnNext=document.getElementById('btnNext'),
+      icoPlay=document.getElementById('icoPlay'),icoPause=document.getElementById('icoPause'),
+      speedSel=document.getElementById('speedSel'),engineSeg=document.getElementById('engineSeg');
+
+let W=0,H=0,K=1,DPR=1;
+function resize(){const r=canvas.getBoundingClientRect();DPR=window.devicePixelRatio||1;
+  W=r.width;H=r.height;canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);
+  K=Math.max(.6,Math.min(1.1,W/1150));}
+window.addEventListener('resize',resize);resize();
+
+const TAU=Math.PI*2;
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const lerp2=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t)];
+const eo=t=>1-Math.pow(1-t,3);
+const eio=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const eob=t=>{const c=1.70158;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2)};
+const stag=(t,s,d)=>clamp((t-s)/d,0,1);
+const rnd=i=>{const x=Math.sin(i*127.1+311.7)*43758.5453;return x-Math.floor(x)};
+const BLUE='#2563eb',RED='#dc2626';
+let gtNow=0;
+function fnt(px,bold){ctx.font=(bold?'bold ':'')+Math.round(px*K)+'px Georgia,"Times New Roman",serif'}
+function fntE(px){ctx.font=Math.round(px*K)+'px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif'}
+function txt(t,x,y,al){ctx.textAlign=al||'center';ctx.fillText(t,x,y)}
+function rr(x,y,w,h,r){r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+function card(x,y,w,h){ctx.fillStyle='rgba(255,255,255,.93)';rr(x,y,w,h,10*K);ctx.fill();
+  ctx.strokeStyle='#d4cfc7';ctx.lineWidth=1.5*K;ctx.stroke()}
+function chip(text,x,y,al,col){col=col||'#1e40af';if(al<=0)return;ctx.globalAlpha=al;fnt(16,true);
+  const tw=ctx.measureText(text).width;ctx.fillStyle='rgba(255,255,255,.95)';rr(x-tw/2-10*K,y-14*K,tw+20*K,26*K,7*K);ctx.fill();
+  ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.stroke();ctx.fillStyle=col;txt(text,x,y+5*K);ctx.globalAlpha=1}
+function stamp(text,x,y,size,color,st,t0,rot){const p=eob(stag(st,t0,0.45));if(p<=0)return;
+  ctx.save();ctx.translate(x,y);ctx.rotate((rot||-0.1)*(1-p*.5));ctx.scale(p,p);
+  fnt(size,true);const w2=ctx.measureText(text).width+36*K;
+  ctx.fillStyle='rgba(255,255,255,.93)';rr(-w2/2,-size*.72*K,w2,size*1.44*K,10*K);ctx.fill();
+  ctx.strokeStyle=color;ctx.lineWidth=3*K;ctx.stroke();ctx.fillStyle=color;txt(text,0,size*.34*K);ctx.restore()}
+function shock(x,y,st,t0,color,R){R=R||180;const u=stag(st,t0,0.9);if(u<=0||u>=1)return;
+  ctx.strokeStyle=color;ctx.globalAlpha=(1-u)*.8;ctx.lineWidth=(4*(1-u)+1)*K;
+  ctx.beginPath();ctx.arc(x,y,u*R*K,0,TAU);ctx.stroke();ctx.globalAlpha=1}
+function confetti(x,y,st,t0,n){for(let i=0;i<n;i++){const u=(st-t0)-i*.012;if(u<0||u>2.6)continue;
+  const a=rnd(i)*TAU,v=(110+rnd(i+50)*170)*K,dx=Math.cos(a)*v*u*.6,dy=Math.sin(a)*v*u*.6+140*K*u*u;
+  ctx.globalAlpha=clamp(1-u/2.6,0,1);ctx.fillStyle=[BLUE,RED,'#eab308','#16a34a'][i%4];
+  ctx.beginPath();ctx.arc(x+dx,y+dy,3.5*K,0,TAU);ctx.fill()}ctx.globalAlpha=1}
+function typeText(text,st,t0){const n=Math.floor(Math.max(0,(st-t0))*30);if(n<=0)return null;
+  return text.slice(0,n)+(n<text.length&&Math.floor(gtNow*3)%2?'▌':'')}
+function caption(text,st,t0,y){const shown=typeText(text,st,t0);if(!shown)return;
+  fnt(19);const tw=ctx.measureText(text).width;
+  ctx.fillStyle='rgba(255,255,255,.88)';rr(W/2-tw/2-14,y-24*K,tw+28,34*K,8);ctx.fill();
+  ctx.strokeStyle='#d4cfc7';ctx.lineWidth=1;ctx.stroke();ctx.fillStyle='#4a3f2e';txt(shown,W/2,y)}
+function sceneTitle(t,st,col){col=col||'#2c2416';const p=eob(stag(st,0.1,0.6));if(p>0){
+  ctx.save();ctx.translate(W/2,44);ctx.scale(Math.max(.001,p),Math.max(.001,p));
+  fnt(30,true);ctx.fillStyle=col;txt(t,0,0);ctx.restore()}
+  const u=eo(stag(st,0.4,0.5));if(u>0){ctx.strokeStyle='#e11d48';ctx.lineWidth=3*K;ctx.beginPath();
+  ctx.moveTo(W/2-95*K*u,56);ctx.lineTo(W/2+95*K*u,56);ctx.stroke()}}
+function arrowHead(x,y,ang,size,col,a){if(a<=0)return;ctx.save();ctx.translate(x,y);ctx.rotate(ang);ctx.globalAlpha=a;
+  ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(-size,-size*0.7);ctx.lineTo(size*0.6,0);ctx.lineTo(-size,size*0.7);ctx.closePath();ctx.fill();ctx.restore()}
+function curveArrow(x1,y1,x2,y2,bend,col,pop,lw){if(pop<=0)return;const mx=(x1+x2)/2,my=(y1+y2)/2;
+  const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy)||1;const nx=-dy/len,ny=dx/len;
+  const cx2=mx+nx*bend,cy2=my+ny*bend;
+  ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.lineCap='round';ctx.globalAlpha=pop;
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.quadraticCurveTo(cx2,cy2,x2,y2);ctx.stroke();
+  arrowHead(x2,y2,Math.atan2(y2-cy2,x2-cx2),8*K,col,pop);ctx.globalAlpha=1}
+function heart(x,y,s,a){ctx.save();ctx.translate(x,y);ctx.scale(s/8,s/8);ctx.globalAlpha=a;
+  ctx.fillStyle='#ec4899';ctx.beginPath();ctx.moveTo(0,4);ctx.bezierCurveTo(-6,-2,-3,-8,0,-3);
+  ctx.bezierCurveTo(3,-8,6,-2,0,4);ctx.fill();ctx.restore()}
+function hearts(x,y,st,t0,n){for(let i=0;i<n;i++){const u=st-t0-i*0.5;if(u<0||u>2.4)continue;
+  heart(x+Math.sin(u*5+i*2)*12*K,y-14*K-u*50*K,(1.6+(i%2)*0.8)*K*2.2,clamp(1-u/2.4,0,1)*0.9)}}
+function popWrap(x,y,p,fn){if(p<=0)return;ctx.save();ctx.translate(x,y);ctx.scale(p,p);ctx.translate(-x,-y);fn();ctx.restore()}
+function pointer(x1,y1,x2,y2,st,t0){const u=stag(st,t0,0.4);if(u<=0)return;
+  ctx.globalAlpha=u;ctx.strokeStyle='#94a3b8';ctx.lineWidth=1.6;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#94a3b8';ctx.beginPath();ctx.arc(x2,y2,3.5*K,0,TAU);ctx.fill();ctx.globalAlpha=1}
+function wordChips(cx,cy,word,st,t0,active,doneN,sc){sc=sc||1;const n=word.length,gap=54*K*sc;const x0=cx-(n-1)*gap/2;
+  word.forEach((L,i)=>{const p=eob(stag(st,t0+i*0.3,0.4));if(p<=0)return;
+    const x=x0+i*gap,col=(L==='B')?BLUE:RED,act=(i===active);
+    const sc2=act?(1+0.1*Math.sin(gtNow*6)):1;
+    ctx.save();ctx.translate(x,cy);ctx.scale(sc*sc2*p,sc*sc2*p);
+    ctx.beginPath();ctx.arc(0,0,16*K,0,TAU);ctx.fillStyle=col;ctx.fill();
+    ctx.strokeStyle=act?'#fff':'rgba(15,23,42,.35)';ctx.lineWidth=act?3:1.5;ctx.stroke();
+    if(act){ctx.globalAlpha=0.5+0.3*Math.sin(gtNow*7);ctx.beginPath();ctx.arc(0,0,23*K,0,TAU);
+      ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();ctx.globalAlpha=1}
+    fnt(15,true);ctx.fillStyle='#fff';txt(L==='B'?'С':'Ч',0,5.5*K);
+    if(i<doneN){fnt(13,true);ctx.fillStyle='#22c55e';txt('✓',13*K,-13*K)}
+    ctx.restore()})}
+function waves(x,y,st,t0,col){if(st<t0)return;const u0=st-t0;
+  for(let k=0;k<3;k++){const u=(u0*1.1-k*0.33)%1;if(u<0)continue;
+    ctx.globalAlpha=(1-u)*0.8;ctx.strokeStyle=col;ctx.lineWidth=2*K;
+    ctx.beginPath();ctx.arc(x,y,(6+u*20)*K,-0.9,0.9);ctx.stroke()}ctx.globalAlpha=1}
+function drawWalkerDot(x,y,col){ctx.beginPath();ctx.arc(x,y-10*K,9*K,0,TAU);ctx.fillStyle=col;ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle='#1f2937';ctx.beginPath();ctx.arc(x-3*K,y-12*K,1.4*K,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.arc(x+3*K,y-12*K,1.4*K,0,TAU);ctx.fill()}
+
+/* ================= ТЕМА: ГІПЕРКУБ І КОД ГРЕЯ ================= */
+const GRN='#16a34a',INK='#2c2416',MUT='#64748b',AMB='#f59e0b';
+const DC=['#2563eb','#16a34a','#f59e0b','#e11d48','#7c3aed','#0891b2','#ea580c','#4d7c0f','#be185d','#475569'];
+const CA=[0,90,38,-33,125,162,-68,16,205,300].map(a=>a*Math.PI/180),CL=[1,1,.55,.42,.3,.25,.2,.17,.14,.11];
+const sm=x=>{x=Math.max(0,Math.min(1,x));return x*x*(3-2*x)};
+const bits=(k,n)=>k.toString(2).padStart(n,'0'),gray=k=>k^(k>>1);
+function node(x,y,l,col,a,r){if(a<=0)return;ctx.globalAlpha=a;ctx.beginPath();ctx.arc(x,y,(r||17)*K,0,TAU);ctx.fillStyle=col||BLUE;ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();ctx.globalAlpha=1}
+function edge(a,b,col,al,lw){if(al<=0)return;ctx.globalAlpha=al;ctx.strokeStyle=col;ctx.lineWidth=(lw||4)*K;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();ctx.globalAlpha=1}
+function link(a,b,col,al,dash){if(al<=0)return;ctx.globalAlpha=al;ctx.strokeStyle=col;ctx.lineWidth=3.5*K;ctx.setLineDash(dash?[8,6]:[]);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1}
+function cubeP(n,sc){const raw=()=>{const P=[];for(let k=0;k<(1<<n);k++){let x=0,y=0;for(let i=0;i<n;i++)if((k>>i)&1){const q=sc?sc[i]:1;x+=Math.cos(CA[i])*CL[i]*q;y-=Math.sin(CA[i])*CL[i]*q}P.push([x,y])}return P};
+  const R=raw();let a=1e9,b=-1e9,c=1e9,d=-1e9;R.forEach(p=>{a=Math.min(a,p[0]);b=Math.max(b,p[0]);c=Math.min(c,p[1]);d=Math.max(d,p[1])});
+  const sp=Math.max(b-a,d-c)||1,mx=(a+b)/2,my=(c+d)/2;return R.map(p=>[(p[0]-mx)/sp,(p[1]-my)/sp])}
+function cubeDraw(n,P,cx,cy,sz,o){o=o||{};const N=o.vmax||(1<<n),r=(o.r||9)*K,pt=k=>[cx+P[k][0]*sz,cy+P[k][1]*sz];ctx.lineCap='round';
+  for(let k=0;k<N;k++)for(let i=0;i<n;i++){const j=k^(1<<i);if(j>k&&j<N){const a=pt(k),b=pt(j);ctx.strokeStyle=o.mono||DC[i];ctx.globalAlpha=(o.ea||1)*(o.thin?.35:1);ctx.lineWidth=(o.thin?1:4)*K;ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke()}}
+  for(let k=0;k<N;k++){const q=pt(k);ctx.globalAlpha=o.va||1;ctx.beginPath();ctx.arc(q[0],q[1],r,0,TAU);ctx.fillStyle=o.vc?o.vc(k):BLUE;ctx.fill();if(!o.thin){ctx.strokeStyle='#fff';ctx.lineWidth=2*K;ctx.stroke()}
+    if(o.lab){const L=bits(k,o.lab);fnt(o.lf||13,true);const w=ctx.measureText(L).width,x0=q[0]-w/2,y=q[1]-r-6*K;
+      if(o.pc){const w1=ctx.measureText(L[0]).width;ctx.fillStyle=L[0]==='0'?'#2563eb':AMB;txt(L[0],x0,y,'left');ctx.fillStyle=INK;txt(L.slice(1),x0+w1,y,'left')}else{ctx.fillStyle=INK;txt(L,q[0],y)}}}
+  ctx.globalAlpha=1}
+
+function s0(w,h,st){sceneTitle('Побудуймо гіперкуб?',st);
+  const T=[3,8,13,18],NM=['точка · 0D','відрізок · 1D','квадрат · 2D','куб · 3D','тесеракт · 4D'];
+  let j=-1;T.forEach((t,i)=>{if(st>=t)j=i});const u=j<0?0:sm((st-T[j])/3.2),n=j<0?1:j+1,sc=Array(n).fill(1);if(j>=0)sc[j]=u;
+  const P=j<0?[[0,0],[0,0]]:cubeP(n,sc);cubeDraw(n,P,W/2,H*.55,Math.min(W*.5,H*.62),{vmax:j<0?1:1<<n,r:10});
+  chip(NM[j<0?0:(u>=1?j+1:j)],W/2,H*.9,stag(st,.4,.4),'#1e40af');stamp('А 5D? А 10D?',W*.5,H*.2,34,RED,st,22,-.03)}
+
+function s1(w,h,st){sceneTitle('Підпишемо вершини бітами',st);
+  [[1,.17,1],[2,.5,9],[3,.83,17]].forEach(([n,fx,t0])=>{const p=eob(stag(st,t0,.6));if(p<=0)return;
+    cubeDraw(n,cubeP(n),W*fx,H*.52,[W*.17,W*.22,W*.27][n-1],{lab:n,pc:1,lf:n===3?14:17,r:10,va:p,ea:p});chip('Q'+n,W*fx,H*.88,p,'#1e40af')});
+  chip('0 — стара копія, 1 — нова',W*.5,H*.2,stag(st,10,.4),'#b45309');
+  if(st>21)caption('Ребро = коди різняться рівно одним бітом',st,21,H*.96)}
+
+function s2(w,h,st){sceneTitle('Скільки там вершин?',st);
+  const rows=[[1,2,1],[2,4,4],[3,8,12],[4,16,32],[5,32,80],[10,1024,5120]];
+  fnt(15,true);ctx.fillStyle=MUT;txt('n',W*.1,H*.2,'left');txt('вершин 2^n',W*.2,H*.2,'left');txt('ребер n·2^(n−1)',W*.36,H*.2,'left');
+  rows.forEach((r,i)=>{const p=eob(stag(st,1.5+i*1.5,.4));if(p<=0)return;ctx.globalAlpha=p;fnt(22,true);ctx.fillStyle=i===5?RED:INK;const y=H*(.3+i*.1);
+    txt(''+r[0],W*.1,y,'left');txt(''+r[1],W*.2,y,'left');txt(''+r[2],W*.36,y,'left');ctx.globalAlpha=1});
+  const a=1-stag(st,14,.6),b=stag(st,14,.8);
+  if(a>0)cubeDraw(4,cubeP(4),W*.75,H*.5,W*.3,{lab:4,lf:12,r:7,va:a,ea:a});
+  if(b>0)cubeDraw(10,cubeP(10),W*.75,H*.5,W*.34,{thin:1,r:1.6,mono:'#334155',va:b,ea:b});
+  if(st>16)caption('Q10: тисячі ребер — а правило те саме',st,16,H*.96)}
+
+function s3(w,h,st){sceneTitle('Обійти всі вершини і повернутися',st);
+  const P=cubeP(3),cx=W*.7,cy=H*.52,sz=W*.3,pt=k=>[cx+P[k][0]*sz,cy+P[k][1]*sz],cnt=[1,2,1,3,1,2,1,3];
+  cubeDraw(3,P,cx,cy,sz,{lab:3,lf:13,r:9,mono:'#cbd5e1'});
+  for(let k=0;k<8;k++){const p=eob(stag(st,2+k*2.2,.4));if(p<=0)continue;const y=H*.2+k*H*.085,bad=cnt[k]>1;
+    ctx.globalAlpha=p;fnt(20,true);ctx.fillStyle=INK;txt(bits(k,3)+' → '+bits((k+1)%8,3),W*.1,y,'left');ctx.fillStyle=bad?RED:GRN;txt(cnt[k]+(cnt[k]===1?' біт':' біти'),W*.36,y,'left');ctx.globalAlpha=1;
+    link(pt(k),pt((k+1)%8),bad?RED:GRN,p,bad)}
+  stamp('Не цикл по ребрах!',W*.5,H*.92,28,RED,st,21,-.03)}
+
+const G1=['0','1'],G2=G1.map(x=>'0'+x).concat(G1.slice().reverse().map(x=>'1'+x)),G3=G2.map(x=>'0'+x).concat(G2.slice().reverse().map(x=>'1'+x));
+function glist(x,y0,arr,rh,half,t1,t2,st){arr.forEach((s,i)=>{const sec=i<half?0:1,p=eob(stag(st,sec?t2:t1,.4));if(p<=0)return;const y=y0+i*rh;
+    ctx.globalAlpha=p;ctx.fillStyle='rgba(255,255,255,.93)';rr(x-40*K,y-rh*.42,80*K,rh*.84,7*K);ctx.fill();ctx.strokeStyle=sec?AMB:'#2563eb';ctx.lineWidth=2;ctx.stroke();
+    fnt(19,true);ctx.fillStyle=INK;txt(s,x,y+6*K);ctx.globalAlpha=1});
+  if(eob(stag(st,t2,.4))>0){ctx.strokeStyle=RED;ctx.setLineDash([6,5]);ctx.lineWidth=2;const ym=y0+(half-.5)*rh;ctx.beginPath();ctx.moveTo(x-62*K,ym);ctx.lineTo(x+62*K,ym);ctx.stroke();ctx.setLineDash([])}}
+function s4(w,h,st){sceneTitle('Код Грея: дзеркало',st);
+  glist(W*.15,H*.3,G1,H*.1,1,1,3,st);glist(W*.45,H*.26,G2,H*.095,2,5,7,st);glist(W*.8,H*.2,G3,H*.085,4,12,14.5,st);
+  [['n = 1',.15],['n = 2',.45],['n = 3',.8]].forEach((q,i)=>chip(q[0],W*q[1],H*.14,stag(st,[1,5,12][i],.4),'#1e40af'));
+  if(st>8)chip('копія + дзеркало; префікс 0 і 1',W*.45,H*.88,stag(st,8,.4),'#b45309');
+  if(st>22)chip('g(k) = k XOR (k >> 1)',W*.5,H*.95,stag(st,22,.4),GRN)}
+
+function s5(w,h,st){sceneTitle('Гамільтонів цикл',st);
+  [[3,.27,.3],[4,.73,.38]].forEach(([n,fx,fs])=>{const P=cubeP(n),N=1<<n,cx=W*fx,cy=H*.5,sz=W*fs,pt=k=>[cx+P[k][0]*sz,cy+P[k][1]*sz];
+    cubeDraw(n,P,cx,cy,sz,{mono:'#e2e8f0',r:8});const u=Math.max(0,Math.min(1,(st-2)/(n===3?10:14)))*N;
+    for(let k=0;k<N;k++){const f=Math.max(0,Math.min(1,u-k));if(f<=0)continue;const a=pt(gray(k)),b=pt(gray((k+1)%N));edge(a,[a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f],GRN,1,6)}
+    for(let k=0;k<N;k++){const a=pt(gray(k));node(a[0],a[1],'',u>k?GRN:BLUE,1,8)}chip('Q'+n,cx,H*.88,1,'#1e40af')});
+  stamp('Код Грея = гамільтонів цикл',W*.5,H*.2,28,GRN,st,17,-.03);
+  if(st>21)chip('Таких циклів: у Q3 — 6, у Q4 — 1344',W*.5,H*.96,stag(st,21,.4),'#b45309')}
+
+function sector(cx,cy,r0,r1,a0,a1,col){ctx.beginPath();ctx.arc(cx,cy,r1,a0,a1);ctx.arc(cx,cy,r0,a1,a0,true);ctx.closePath();ctx.fillStyle=col;ctx.fill();ctx.strokeStyle='#94a3b8';ctx.lineWidth=1;ctx.stroke()}
+function s6(w,h,st){sceneTitle('Датчик кута: код Грея',st);
+  const R=Math.min(W*.19,H*.3),th=Math.max(0,st-2)*.33,DL=[0,.10,-.08],TW=Math.PI*2,mod=x=>((x%TW)+TW)%TW,Q=Math.PI/4;
+  [[.27,0,'двійковий диск'],[.73,1,'диск із кодом Грея']].forEach(([fx,g,name])=>{const cx=W*fx,cy=H*.5,val=(s,i)=>((g?gray(s):s)>>i)&1;
+    for(let i=0;i<3;i++){const r1=R-i*R*.25,r0=r1-R*.25;for(let s=0;s<8;s++){const a0=s*Q+th-Math.PI/2;sector(cx,cy,r0,r1,a0,a0+Q,val(s,i)?'#1e293b':'#f8fafc')}
+      const al=-Math.PI/2+DL[i],rm=(r0+r1)/2;ctx.fillStyle=RED;ctx.beginPath();ctx.arc(cx+Math.cos(al)*rm,cy+Math.sin(al)*rm,4*K,0,TAU);ctx.fill()}
+    let rdv=0;for(let i=0;i<3;i++){const s=Math.floor(mod(DL[i]-th)/Q)%8;rdv|=val(s,i)<<i}
+    const ts=Math.floor(mod(-th)/Q)%8,ps=g?(rdv^(rdv>>1)^(rdv>>2)):rdv,df=Math.min((ps-ts+8)%8,(ts-ps+8)%8);
+    chip(name,cx,H*.16,1,'#1e40af');fnt(17,true);ctx.fillStyle=df>1?RED:INK;txt('зчитано '+bits(rdv,3)+' → '+ps+' (має бути '+ts+')',cx,cy+R+34*K)});
+  if(st>1&&st<22)caption('Червоні точки — датчики, трохи зсунуті',st,1,H*.94);
+  stamp('Грей: помилка не більша за 1 крок',W*.5,H*.86,24,GRN,st,22,-.03)}
+
+function s7(w,h,st){sceneTitle('QAM: завада і біти',st);
+  const S=Math.min(W*.065,H*.1),B=['00','01','10','11'],Gy=['00','01','11','10'];
+  [[.27,B,'двійкові підписи'],[.73,Gy,'підписи Грея']].forEach(([fx,A,name],gi)=>{const cx=W*fx,cy=H*.5,pt=(c,r)=>[cx+(c-1.5)*S*1.5,cy+(r-1.5)*S*1.1];
+    for(let r=0;r<4;r++)for(let c=0;c<4;c++){const q=pt(c,r),hot=(c===1||c===2)&&r===1;ctx.beginPath();ctx.arc(q[0],q[1],5*K,0,TAU);ctx.fillStyle=hot?AMB:BLUE;ctx.fill();fnt(11,true);ctx.fillStyle=INK;txt(A[c]+A[r],q[0],q[1]-9*K)}
+    const a=pt(1,1),b=pt(2,1),u=sm((st-4)/4),pr=[a[0]+(b[0]-a[0])*.62*u,a[1]];
+    ctx.strokeStyle=RED;ctx.setLineDash([5,4]);ctx.lineWidth=2;ctx.beginPath();ctx.arc(a[0],a[1],S*.75,0,TAU);ctx.stroke();ctx.setLineDash([]);
+    if(st>4){ctx.beginPath();ctx.arc(pr[0],pr[1],4*K,0,TAU);ctx.fillStyle=RED;ctx.fill()}
+    chip(name,cx,H*.18,1,'#1e40af');const nb=gi?1:2;if(st>9)chip('помилка: '+nb+(nb===1?' біт':' біти'),cx,H*.84,stag(st,9,.4),gi?GRN:RED)});
+  if(st<14)caption('Точка = комплексне число: амплітуда і фаза радіохвилі',st,1,H*.95);else caption('4 біти = 16 точок: ґратка 4×4 — частина Q4',st,14,H*.95)}
+
+function s8(w,h,st){sceneTitle('Підсумок',st);
+  stamp('Код Грея — маршрут по ребрах гіперкуба',W*.5,H*.4,30,GRN,st,1,-.03);stamp('Один крок — один біт',W*.5,H*.6,28,'#e11d48',st,4,.03);confetti(W*.5,H*.45,st,4,60)}
+
+const scenes=[
+ {tick:'Хук',dur:26,draw:s0,text:"Хочете побудувати гіперкуб довільної розмірності?.. Починаємо з точки — це нульовий вимір. Протягнемо її на одиницю — вийде відрізок. Куб розмірності один. Протягнемо відрізок — двомірний аналог куба - квадрат. Квадрат подвоюємо і витягуємо, виходить звичайний тривимірний куб. Дублюємо і тягнемо куб  — маємо чотиривимірний куб, тесеракт. А якщо п'ять вимірів? Чи десять? Правило завжди одне. Давайте його знайдемо."},
+ {tick:'Коди',dur:30,draw:s1,text:"Підпишемо вершини. Відрізок має дві вершини: нуль і одиниця. Щоб отримати квадрат, беремо дві копії відрізка: у першої до коду додаємо нуль попереду, у другої — одиницю, і з'єднуємо відповідні вершини. Виходить чотири двобітні коди. Так само з квадрата виникає куб із трибітними кодами. Головне правило: ребро з'єднує вершини, коди яких відрізняються рівно одним бітом."},
+ {tick:'Масштаб',dur:26,draw:s2,text:"Скільки в такому кубі вершин і ребер? У вимірі n вершин два в степені n, а ребер — n помножити на два в степені n мінус один. Для чотирьох вимірів це шістнадцять вершин і тридцять два ребра. А для десяти — тисяча двадцять чотири вершини й п'ять тисяч сто двадцять ребер. Уявити такий куб важко, але правило побудови те саме."},
+ {tick:'Задача',dur:32,draw:s3,text:"Тепер задача: обійти всі вершини по одному разу й повернутися на старт. Це гамільтонів цикл. Спробуймо найпростіше — рахувати у двійковій системі. Нуль, один, два… Але перехід від нуль нуль один до нуль один нуль змінює одразу два біти, а це не ребро куба. А перехід від нуль один один до один нуль нуль змінює три біти. Двійковий лічильник не годиться."},
+ {tick:'Дзеркало',dur:34,draw:s4,text:"Вихід — код Грея, і будується він дзеркалом. Беремо список для одного біта: нуль, один. Відображаємо його й дописуємо префікс нуль до першої половини та один до другої. Отримуємо нуль нуль, нуль один, один один, один нуль. Повторюємо — і маємо список для трьох бітів. Сусідні коди відрізняються рівно одним бітом, навіть останній і перший. А число k у код Грея перетворює формула: k виключне або k, зсунуте на один біт."},
+ {tick:'Цикл',dur:28,draw:s5,text:"Подивіться: послідовність коду Грея — це гамільтонів цикл гіперкуба. І для звичайного куба, і для чотиривимірного ми обходимо всі вершини й повертаємося на старт, змінюючи щоразу один біт. Код Грея — не єдиний такий цикл: у тривимірному їх шість, а в чотиривимірному — тисяча триста сорок чотири."},
+ {tick:'Датчик',dur:34,draw:s6,text:"Де це потрібно? У датчиках кута. Диск розфарбований кільцями, і кожне кільце — один біт. Якщо датчики стоять трохи неточно, у двійковому диску на межі секторів змінюється кілька бітів одразу, і можна прочитати зовсім інший кут. У диску з кодом Грея на межі змінюється лише один біт, тож похибка не більша за один сектор."},
+ {tick:'QAM',dur:30,draw:s7,text:"Ще приклад — квадратурна амплітудна модуляція, QAM. Кожна точка сузір'я — це комплексне число, яке кодує амплітуду і фазу радіохвилі. Завада зсуває точку до сусідньої. Якщо підписати точки звичайними двійковими кодами, сусідні можуть відрізнятися двома бітами. З кодом Грея сусіди відрізняються одним бітом, тож мала завада псує мало бітів. А сітка чотири на чотири — це частина чотиривимірного гіперкуба."},
+ {tick:'Фінал',dur:12,draw:s8,text:"Отже, код Грея — це маршрут по ребрах гіперкуба: один крок — один біт. А тепер — спробуйте самі!"},
+ {tick:'Гра',dur:14,noSub:true,isGame:true,draw:function(){Game.frame()},text:"Ваша черга! Пройдіть усі вершини куба по ребрах і поверніться на старт. Спершу з підказкою, потім без неї."}];
+const cum=[];let acc0=0;scenes.forEach(s=>{cum.push(acc0);acc0+=s.dur});
+const TOTAL=acc0;
+/* ================= ГРА: ЦИКЛ НА ГІПЕРКУБІ ================= */
+const Game=(function(){
+const el=id=>document.getElementById(id),layer=el('gameLayer'),gc=el('gameCanvas'),gx=gc.getContext('2d');
+const RR=[{n:3,h:1},{n:3,h:0},{n:4,h:1},{n:4,h:0}];
+let rd=0,n=3,N=8,path=[0],P=[],solved=false,msg='',err=0,hv=-1,dpr=1;
+const adj=(a,b)=>{const d=a^b;return d&&!(d&(d-1))};
+function refresh(){const R=RR[rd];
+  el('gTitle').textContent='Гра: цикл на гіперкубі — раунд '+(rd+1)+'/4';
+  el('gTask').textContent='Q'+n+(R.h?' · з підказкою':' · без підказки')+': пройдіть усі '+N+' вершин по ребрах (по одній) і поверніться до старту (червоне коло).';
+  let h='Крок <b>'+path.length+'/'+N+'</b> · помилок: '+err;
+  if(R.h)h+='<br>Код Грея: <small>'+Array.from({length:N},(_,k)=>bits(gray(k),n)).join(' ')+'</small>';
+  if(solved)h+='<br>🎉 '+(rd<3?'Цикл замкнуто! Тисніть «Далі».':'Усі раунди пройдені!');else if(msg)h+='<br>'+msg;
+  el('gStatus').className='g-status'+(solved?' win':'');el('gStatus').innerHTML=h;
+  el('gHint').disabled=!R.h;el('gHint').style.opacity=R.h?1:.4;el('gNext').disabled=!solved;el('gNext').style.opacity=solved?1:.45;el('gNext').textContent=rd<3?'Далі →':'Нова гра'}
+function fresh(){const R=RR[rd];n=R.n;N=1<<n;P=cubeP(n);path=[0];solved=false;msg='';err=0;hv=-1;refresh()}
+function pick(k){if(solved)return;hv=-1;const last=path[path.length-1];
+  if(path.indexOf(k)>=0){msg='Ця вершина вже пройдена';err++;refresh();return}
+  if(!adj(last,k)){msg='Не сусід: треба змінити рівно один біт';err++;refresh();return}
+  path.push(k);msg='';
+  if(path.length===N){if(adj(k,0)){solved=true;msg='Готово!'}else msg='Остання вершина не сусідня до старту — зробіть крок назад'}
+  else{let free=false;for(let i=0;i<n;i++)if(path.indexOf(k^(1<<i))<0)free=true;if(!free)msg='Тупик! Зробіть крок назад'}
+  refresh()}
+function hint(){if(solved||!RR[rd].h)return;let m=0;while(m<path.length&&path[m]===gray(m))m++;
+  if(m===path.length&&path.length<N){hv=gray(path.length);msg='За кодом Грея далі — '+bits(hv,n)}
+  else if(m<path.length){hv=-1;msg='Після кроку '+m+' ви відійшли від коду Грея (це не обов\'язково помилка)'}refresh()}
+function setVisible(v){layer.classList.toggle('on',!!v);if(v)refresh()}
+const pt=(k,w,h)=>{const s=Math.min(w,h)*.74;return[w/2+P[k][0]*s,h/2+P[k][1]*s]};
+function seg(a,b,c,lw){gx.strokeStyle=c;gx.lineWidth=lw;gx.beginPath();gx.moveTo(a[0],a[1]);gx.lineTo(b[0],b[1]);gx.stroke()}
+function draw(){const w=gc.width,h=gc.height,u=dpr*K,R=RR[rd];gx.lineCap='round';
+  for(let k=0;k<N;k++)for(let i=0;i<n;i++){const j=k^(1<<i);if(j>k)seg(pt(k,w,h),pt(j,w,h),'#cbd5e1',4*u)}
+  for(let i=0;i+1<path.length;i++)seg(pt(path[i],w,h),pt(path[i+1],w,h),GRN,7*u);
+  if(solved)seg(pt(path[N-1],w,h),pt(0,w,h),GRN,7*u);
+  for(let k=0;k<N;k++){const q=pt(k,w,h),ix=path.indexOf(k);gx.beginPath();gx.arc(q[0],q[1],17*u,0,TAU);
+    gx.fillStyle=k===hv?GRN:ix<0?BLUE:ix===path.length-1?AMB:'#475569';gx.fill();gx.strokeStyle=k===0?RED:'#fff';gx.lineWidth=(k===0?4:3)*u;gx.stroke();
+    gx.textAlign='center';gx.font='bold '+Math.round(14*u)+'px Georgia,serif';gx.fillStyle='#fff';gx.fillText(ix>=0?ix+1:'',q[0],q[1]+5*u);
+    if(R.h){gx.font='bold '+Math.round(12*u)+'px Georgia,serif';gx.fillStyle='#2c2416';gx.fillText(bits(k,n),q[0],q[1]-24*u)}}}
+function frame(){const r=gc.getBoundingClientRect();dpr=window.devicePixelRatio||1;const w=Math.max(10,Math.round(r.width*dpr)),h=Math.max(10,Math.round(r.height*dpr));
+  if(gc.width!==w||gc.height!==h){gc.width=w;gc.height=h}gx.setTransform(1,0,0,1,0,0);gx.clearRect(0,0,w,h);draw()}
+gc.addEventListener('pointerdown',e=>{const r=gc.getBoundingClientRect(),x=(e.clientX-r.left)*dpr,y=(e.clientY-r.top)*dpr,w=gc.width,h=gc.height;let best=-1,bd=1e9;
+  for(let k=0;k<N;k++){const q=pt(k,w,h),d=Math.hypot(q[0]-x,q[1]-y);if(d<bd){bd=d;best=k}}if(bd<28*dpr*K)pick(best)});
+el('gHint').addEventListener('click',hint);
+el('gBack').addEventListener('click',()=>{if(!solved&&path.length>1){path.pop();msg='';hv=-1;refresh()}});
+el('gReset').addEventListener('click',fresh);
+el('gNext').addEventListener('click',()=>{if(!solved)return;rd=rd<3?rd+1:0;fresh()});
+fresh();
+return{frame,setVisible,_r:x=>{rd=x;fresh()}}
+})();
+
+/* ================= TTS (гібрид) ================= */
+const synth=window.speechSynthesis;
+let engine='google',userPicked=false,gAudio=null,gToken=0;
+let voiceScene=-1,ttsDone=true,ttsActive=false;
+function detect(){if(userPicked)return;const vs=(synth&&synth.getVoices?synth.getVoices():[])||[];
+  const uk=vs.some(v=>v.lang&&v.lang.toLowerCase().startsWith('uk'));
+  updateEngineUI()}
+if(synth){detect();if(synth.onvoiceschanged!==undefined)synth.onvoiceschanged=detect}
+function updateEngineUI(){engineSeg.querySelectorAll('button').forEach(b=>
+  b.classList.toggle('on',b.dataset.e===engine))}
+function splitChunks(text,maxLen){const ss=text.match(/[^.!?]+[.!?]+/g)||[text];
+  const out=[];let cur='';ss.forEach(s=>{if((cur+s).length>maxLen&&cur){out.push(cur.trim());cur=s}else cur+=s});
+  if(cur)out.push(cur.trim());return out}
+/* ---- Google TTS (неофіційний): два ендпоїнти, при збої → відкат на Web Speech ---- */
+const G_URLS=[
+  q=>'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=uk&q='+encodeURIComponent(q),
+  q=>'https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=uk&q='+encodeURIComponent(q)];
+let gIdx=0,gOk=false;
+function ukVoice(){const vs=(synth&&synth.getVoices?synth.getVoices():[])||[];
+  return vs.find(v=>v.lang&&v.lang.toLowerCase().replace('_','-').startsWith('uk'))||null}
+/* Результат: 'ok' | 'fail' (помилка або 6 с без старту) | 'skip' (браузер заблокував автоплей) */
+function gPlay(url){return new Promise(res=>{
+  const a=new Audio(url);gAudio=a;let fin=false,started=false;
+  const end=r=>{if(!fin){fin=true;clearTimeout(tm);res(r)}};
+  const tm=setTimeout(()=>{if(!started){try{a.pause()}catch(e){}end('fail')}},6000);
+  a.onplaying=()=>{started=true;clearTimeout(tm);gOk=true};
+  a.onended=()=>end('ok');
+  a.onerror=()=>end(started?'ok':'fail');
+  a.play().catch(e=>{const n=e&&e.name;if(n==='NotAllowedError')end('skip');else if(n!=='AbortError')end('fail')})})}
+function gFallback(rest,idx){
+  console.warn('Google TTS недоступний → відкат на Web Speech');
+  hfMsg='⚠ Google TTS недоступний → Web Speech';
+  engine='webspeech';updateEngineUI();
+  if(rest&&rest.trim())speak(rest,idx);else{if(voiceScene===idx){ttsDone=true;ttsActive=false}}}
+function speak(text,sceneIdx){voiceScene=sceneIdx;ttsDone=false;ttsActive=true;
+  const done=()=>{if(voiceScene===sceneIdx){ttsDone=true;ttsActive=false}};
+  if(engine==='none'){ttsDone=true;ttsActive=false;return}
+  if(engine==='webspeech'){const v=synth&&ukVoice();
+    if(!v){engine='none';updateEngineUI();hfMsg='⚠ Немає українського голосу → тихо';done();return}
+    try{if(synth.speaking||synth.pending)synth.cancel()}catch(e){}
+    const u=new SpeechSynthesisUtterance(text);u.voice=v;u.lang=v.lang;
+    u.rate=clamp(0.95*speed,0.5,2);u.pitch=1;
+    u.onend=done;u.onerror=e=>{console.warn('Web Speech:',e&&e.error);done()};
+    synth.speak(u);if(synth.paused)synth.resume()}
+  else if(engine==='hf'){const myTok=++gToken;hfWait=true;
+    (async()=>{
+      if(!await hfEnsure()){if(myTok===gToken)hfFallback(text,sceneIdx);return}
+      /* у черзі лишаємо лише потрібне: ця сцена + наступна (після перемотування старі заявки не гальмують нові) */
+      {const want=new Set(),vv=hfVoiceSel.value;
+        [sceneIdx,sceneIdx+1].forEach(j=>{const s=scenes[j];if(s)hfSplit(s.text,110).forEach(c=>want.add(vv+'|'+c))});
+        hfPending.forEach(j=>{if(!want.has(j.key)){j.skipped=true;hfCache.delete(j.key);hfPending.delete(j)}})}
+      const ch=hfSplit(text,110),ps=ch.map(c=>hfSynth(c));ps.forEach(p=>p.catch(()=>{}));
+      hfPrefetch(sceneIdx+1); /* уся наступна сцена генерується, поки звучить поточна */
+      for(let i=0;i<ch.length;i++){let url;
+        if(i>0)hfWait=true;try{url=await ps[i]}catch(e){console.error('UA нейро:',e);if(myTok===gToken)hfFallback(text,sceneIdx);return}
+        if(myTok!==gToken)return;
+        hfWait=false;
+        await new Promise(res=>{const a=new Audio(url);a.playbackRate=speed;gAudio=a;
+          const txt=ch[i];a.addEventListener('loadedmetadata',()=>console.log('[UA нейро]',txt.length,'знаків →',a.duration.toFixed(1),'с:',txt));
+          a.onended=res;a.onerror=res;
+          const pl=a.play();if(pl)pl.catch(e=>{if(!(e&&e.name==='AbortError'))res()});
+          if(isPaused)a.pause()});
+        if(myTok!==gToken)return}
+      done()})().catch(e=>{console.error(e);hfWait=false;done()})}
+  else{const myTok=++gToken,ch=splitChunks(text,180);
+    (async()=>{
+      for(let i=0;i<ch.length;i++){let r='fail';
+        for(let k=0;k<G_URLS.length&&r==='fail';k++){const ix=(gIdx+k)%G_URLS.length;
+          r=await gPlay(G_URLS[ix](ch[i]));
+          if(myTok!==gToken)return;
+          if(r!=='fail')gIdx=ix}
+        if(r==='fail'){gFallback(ch.slice(i).join(' '),sceneIdx);return}}
+      done()})().catch(e=>{console.error(e);done()})}}
+/* ---- UA нейро: демо robinhad/ukrainian-tts на Hugging Face (відкат -> Google TTS) ---- */
+const HF_SPACE='robinhad/ukrainian-tts',HF_HOST='https://robinhad-ukrainian-tts.hf.space',
+  HF_CLIENT='https://cdn.jsdelivr.net/npm/@gradio/client@2.6.0/dist/index.min.js';
+const hfVoiceSel=document.getElementById('hfVoice');
+let hfApp=null,hfConn=null,hfMsg='',hfWait=false,hfQ=Promise.resolve(),hfApi='/predict';const hfCache=new Map(),hfPending=new Set();
+const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout '+ms)),ms))]);
+function hfEnsure(){if(hfConn)return hfConn;
+  hfConn=(async()=>{hfMsg='⏳';const m=await import(HF_CLIENT);
+    hfApp=await withTimeout(m.Client.connect(HF_SPACE),60000);hfMsg='';return true})()
+    .catch(e=>{console.error('UA нейро:',e);hfMsg='⚠ UA нейро недоступне → Google';hfConn=null;return false});
+  return hfConn}
+/* Забираємо аудіо в blob (кеш у пам'яті): коли дійде до сцени, воно вже в браузері. Якщо CORS не дозволяє — лишаємо звичайний URL */
+async function hfBlob(u){try{const r=await withTimeout(fetch(u),30000);if(!r.ok)throw new Error(r.status);
+  return URL.createObjectURL(await r.blob())}catch(e){return u}}
+function hfSynth(t){const v=hfVoiceSel.value,k=v+'|'+t;if(hfCache.has(k))return hfCache.get(k);
+  const job={key:k,started:false,skipped:false};hfPending.add(job);
+  const run=hfQ=hfQ.catch(()=>{}).then(async()=>{hfPending.delete(job);
+    if(job.skipped)throw new Error('skipped');job.started=true;let last;
+    for(const n of [hfApi,'/tts']){const t0=Date.now();
+      try{const r=await withTimeout(hfApp.predict(n,[t,v]),90000);
+        const f=r&&r.data&&r.data[0];const u=f&&(f.url||(f.path&&HF_HOST+'/file='+f.path));
+        if(!u)throw new Error('немає аудіо у відповіді');hfApi=n;return u}
+      catch(e){last=e;if(Date.now()-t0>4000)break}}
+    throw last});
+  const pr=run.then(hfBlob);
+  hfCache.set(k,pr);pr.catch(()=>{if(hfCache.get(k)===pr)hfCache.delete(k)});return pr}
+function hfPrefetch(i){const s=scenes[i];if(!s)return;hfSplit(s.text,110).forEach(c=>hfSynth(c).catch(()=>{}))}
+/* Ділимо лише за межами речень (. ! ? …): кома чи тире всередині речення не повинні ставати «крапкою».
+   Короткі сусідні речення склеюємо до max знаків. Дуже довге речення (>220) ділимо лише за ; або : */
+function hfSplit(text,max){
+  const ss=(text.match(/[^.!?…]+[.!?…]+["»”)]*|[^.!?…]+$/g)||[text]).map(x=>x.trim()).filter(Boolean);
+  const out=[];
+  ss.forEach(x=>{if(x.length<=220){out.push(x);return}
+    let cur='';x.split(/(?<=[;:])\s+/).forEach(q=>{
+      if(cur&&(cur+' '+q).length>max){out.push(cur);cur=q}else cur=cur?cur+' '+q:q});
+    if(cur)out.push(cur)});
+  const m=[];out.forEach(q=>{if(m.length&&(m[m.length-1]+' '+q).length<=max)m[m.length-1]+=' '+q;else m.push(q)});
+  return m.length?m:[text]}
+function hfFallback(text,idx){hfWait=false;engine='google';updateEngineUI();
+  if(!hfMsg)hfMsg='⚠ UA нейро недоступне → Google';speak(text,idx)}
+hfVoiceSel.onchange=()=>{if(engine==='hf'&&isPlaying&&!isPaused){stopSpeaking();speakScene()}};
+
+function stopSpeaking(){hfWait=false;gToken++;if(gAudio){gAudio.pause();gAudio=null}
+  if(synth){try{synth.cancel()}catch(e){}}
+  ttsActive=false;ttsDone=true}
+
+/* ================= ПЛЕЄР ================= */
+let currentScene=0,sceneTime=0,globalTime=0,isPlaying=false,isPaused=false,
+    hasStarted=false,finished=false,holdTimer=0,speed=1;
+function setPlayIcon(playing){icoPlay.style.display=playing?'none':'';
+  icoPause.style.display=playing?'':'none'}
+function setSubtitle(sc){if(chkSubs.checked&&!sc.noSub){subtitleEl.innerHTML=sc.text;
+  subtitleEl.style.opacity='1'}else subtitleEl.style.opacity='0'}
+function startScene(i){currentScene=clamp(i,0,scenes.length-1);sceneTime=0;holdTimer=0;
+  const sc=scenes[currentScene];setSubtitle(sc);stopSpeaking();
+  if(isPlaying)speak(sc.text,currentScene);updateSceneButtons()}
+function speakScene(){const sc=scenes[currentScene];setSubtitle(sc);speak(sc.text,currentScene)}
+function startShow(){hasStarted=true;finished=false;isPlaying=true;isPaused=false;
+  setPlayIcon(true);startScene(0)}
+function doPause(){isPaused=true;setPlayIcon(false);
+  if(engine==='webspeech'&&synth)synth.pause();
+  if((engine==='google'||engine==='hf')&&gAudio)gAudio.pause()}
+function doResume(){isPaused=false;setPlayIcon(true);
+  if(engine==='webspeech'&&synth)synth.resume();
+  if((engine==='google'||engine==='hf')&&gAudio)gAudio.play()}
+function togglePlay(){if(!hasStarted){startShow();return}
+  if(!isPlaying){finished=false;isPlaying=true;isPaused=false;setPlayIcon(true);speakScene();return}
+  isPaused?doResume():doPause()}
+function stopShow(){isPlaying=false;isPaused=false;finished=false;setPlayIcon(false);
+  stopSpeaking();currentScene=0;sceneTime=0;holdTimer=0;
+  subtitleEl.style.opacity='0';updateSceneButtons()}
+function seekScene(i){i=clamp(i,0,scenes.length-1);stopSpeaking();finished=false;
+  currentScene=i;sceneTime=0;holdTimer=0;updateSceneButtons();
+  if(isPlaying&&!isPaused)speakScene();else setSubtitle(scenes[i])}
+function seekTime(T){let i=0;while(i<scenes.length-1&&T>=cum[i+1])i++;
+  stopSpeaking();finished=false;currentScene=i;sceneTime=T-cum[i];holdTimer=0;
+  updateSceneButtons();if(isPlaying&&!isPaused)speakScene();else setSubtitle(scenes[i])}
+
+/* ================= ОБРОБНИКИ ================= */
+btnPlay.onclick=togglePlay;
+btnStop.onclick=stopShow;
+btnNext.onclick=()=>seekScene(currentScene+1);
+btnPrev.onclick=()=>seekScene(currentScene-1);
+progressZone.onclick=e=>{const r=progressZone.getBoundingClientRect();
+  seekTime(clamp((e.clientX-r.left)/r.width,0,1)*TOTAL)};
+engineSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{userPicked=true;
+  engine=b.dataset.e;if(engine!=='hf')hfMsg='';updateEngineUI();stopSpeaking();if(engine==='hf')hfEnsure();
+  if(isPlaying&&!isPaused)speakScene()});
+speedSel.onchange=()=>{speed=parseFloat(speedSel.value)};
+chkSubs.onchange=()=>{if(!chkSubs.checked)subtitleEl.style.opacity='0';
+  else setSubtitle(scenes[currentScene])};
+chkDebug.onchange=()=>{debugSection.style.display=chkDebug.checked?'block':'none'};
+document.addEventListener('keydown',e=>{
+  if(e.target&&e.target.closest&&e.target.closest('#gameLayer'))return;
+  if(e.code==='Space'){e.preventDefault();togglePlay()}
+  else if(e.code==='ArrowRight')seekScene(currentScene+1);
+  else if(e.code==='ArrowLeft')seekScene(currentScene-1);
+  else if(e.code==='KeyR')stopShow()});
+canvas.addEventListener('click',()=>{if(!hasStarted)startShow()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)lastTs=performance.now()});
+
+/* ================= ЗАСІЧКИ / ДЕБАГ ================= */
+const tickEls=[];
+scenes.forEach((sc,i)=>{const t=document.createElement('div');t.className='tick';
+  t.style.left=(cum[i]/TOTAL*100)+'%';t.title=(i+1)+'. '+sc.tick+' ('+sc.dur+' с)';
+  t.onclick=e=>{e.stopPropagation();seekScene(i)};ticksLayer.appendChild(t);tickEls.push(t);
+  const l=document.createElement('div');l.className='tick-label';l.style.left=(cum[i]/TOTAL*100)+'%';
+  l.textContent=sc.tick;ticksLayer.appendChild(l)});
+function updateLabelsVis(){ticksLayer.querySelectorAll('.tick-label').forEach(l=>
+  l.style.display=chkLabels.checked?'':'none')}
+chkLabels.onchange=updateLabelsVis;updateLabelsVis();
+scenes.forEach((sc,i)=>{const b=document.createElement('button');
+  b.textContent=fmt(cum[i])+' · '+sc.tick;b.onclick=()=>seekScene(i);
+  sceneListEl.appendChild(b)});
+function updateSceneButtons(){Game.setVisible(!!scenes[currentScene].isGame);
+  sceneListEl.querySelectorAll('button').forEach((b,i)=>
+  b.classList.toggle('active',i===currentScene));
+  sceneIndicator.textContent=(currentScene+1)+'/'+scenes.length+' · '+scenes[currentScene].tick}
+function fmt(s){s=Math.floor(s);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function updateHud(){const sc=scenes[currentScene];
+  const cur=cum[currentScene]+Math.min(sceneTime,sc.dur);
+  progressFill.style.width=(cur/TOTAL*100)+'%';
+  timeDisp.textContent=fmt(cur)+' / '+fmt(TOTAL);
+  tickEls.forEach((t,i)=>t.classList.toggle('active',i===currentScene));
+  voiceState.textContent=(engine==='none'?'🔇':(ttsActive?'🔊':'🔈'))+(hfMsg?' '+hfMsg:'');
+  voiceState.classList.toggle('active',ttsActive)}
+updateSceneButtons();
+
+/* ================= ГОЛОВНИЙ ЦИКЛ ================= */
+let lastTs=performance.now();
+function overlayStart(){ctx.fillStyle='rgba(8,12,26,.55)';ctx.fillRect(0,0,W,H);
+  const pu=1+0.05*Math.sin(performance.now()/300);
+  ctx.save();ctx.translate(W/2,H/2-30);ctx.scale(pu,pu);
+  ctx.beginPath();ctx.arc(0,0,54,0,TAU);ctx.fillStyle='rgba(255,255,255,.95)';ctx.fill();
+  ctx.strokeStyle='#e11d48';ctx.lineWidth=5;ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-14,-22);ctx.lineTo(-14,22);ctx.lineTo(24,0);ctx.closePath();
+  ctx.fillStyle='#e11d48';ctx.fill();ctx.restore();
+  fnt(22,true);ctx.fillStyle='#fff';txt('Натисніть, щоб дивитись з озвученням',W/2,H/2+70);
+  fnt(15);ctx.fillStyle='rgba(255,255,255,.85)';
+  txt('Space — пауза · ←/→ — сцени · клік по шкалі — перемотка',W/2,H/2+102)}
+
+function frame(ts){const rawDt=Math.min(0.1,(ts-lastTs)/1000);lastTs=ts;
+  if(isPlaying&&!isPaused&&!(engine==='hf'&&hfWait)){const dt=rawDt*speed;globalTime+=dt;sceneTime+=dt;
+    const sc=scenes[currentScene];
+    const animDone=sceneTime>=sc.dur;
+    const voiceOK=engine==='none'||ttsDone||sceneTime>sc.dur+(engine==='webspeech'?30:60);
+    if(animDone&&voiceOK){holdTimer+=dt;
+      if(holdTimer>=0.7){
+        if(currentScene<scenes.length-1)startScene(currentScene+1);
+        else{finished=true;isPlaying=false;isPaused=false;setPlayIcon(false);stopSpeaking()}}}
+    else holdTimer=0}
+  gtNow=globalTime; /* критично: мерехтіння ліхтарів, курсор, шеврони, сніг */
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#fbf7f0');g.addColorStop(1,'#f2ebdd');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  scenes[currentScene].draw(W,H,sceneTime,globalTime);
+  const f=1-stag(sceneTime,0,0.45);
+  if(f>0&&hasStarted){ctx.fillStyle='rgba(251,247,240,'+f*0.6+')';ctx.fillRect(0,0,W,H)}
+  if(hasStarted&&engine==='hf'&&hfWait){ctx.fillStyle='rgba(30,30,30,.75)';ctx.font='bold 16px Arial';ctx.textAlign='left';ctx.fillText('Готую озвучення…',16,H-16)}
+  if(!hasStarted)overlayStart();
+  updateHud();
+  requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
