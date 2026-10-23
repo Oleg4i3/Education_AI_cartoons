@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Готель "Нескінченісь". Потужності нескінченних множин</title>
+<style>
+:root{--bg:#f6f1e7;--txt:#2c2416;--mut:#6b5d4f;--red:#e11d48}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Georgia,'Times New Roman',serif;background:var(--bg);color:var(--txt);
+  display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:18px}
+.container{width:100%;max-width:1240px;display:flex;flex-direction:column}
+.presentation{width:100%;aspect-ratio:16/9;background:#fff;border:2px solid #d4cfc7;
+  border-radius:10px 10px 0 0;position:relative;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+canvas{width:100%;height:100%;display:block;cursor:pointer}
+.scene-indicator{position:absolute;top:14px;right:14px;background:rgba(30,64,175,.92);color:#fff;
+  padding:5px 12px;border-radius:5px;font-size:13px;font-weight:bold;pointer-events:none}
+.subtitle{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
+  background:rgba(255,255,255,.95);padding:10px 20px;border-radius:8px;border:1px solid #d4cfc7;
+  font-size:17px;max-width:82%;text-align:center;line-height:1.45;box-shadow:0 2px 10px rgba(0,0,0,.12);
+  transition:opacity .3s;pointer-events:none}
+.subtitle b{color:#1e40af}
+.controls{background:linear-gradient(#241c15,#15100b);border-radius:0 0 10px 10px;padding:6px 14px 12px}
+.progress-zone{position:relative;height:40px;cursor:pointer}
+.progress-track{position:absolute;left:0;right:0;top:15px;height:5px;background:rgba(255,255,255,.16);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;width:0;background:linear-gradient(90deg,#e11d48,#f43f5e);border-radius:3px}
+.tick{position:absolute;top:11px;width:3px;height:13px;background:rgba(255,255,255,.45);border-radius:2px;transform:translateX(-1px)}
+.tick:hover{background:#fff}
+.tick.active{background:#fbbf24;box-shadow:0 0 6px #fbbf24}
+.tick-label{position:absolute;top:27px;transform:translateX(-50%);font-size:10px;color:rgba(255,255,255,.62);
+  white-space:nowrap;pointer-events:none;font-family:Arial,sans-serif}
+.btn-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.ctl{background:transparent;border:none;cursor:pointer;width:34px;height:34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;transition:background .2s}
+.ctl:hover{background:rgba(255,255,255,.12)}
+.ctl svg{width:19px;height:19px;fill:#fff}
+.time{color:#fff;font:13px Arial;margin-left:4px;min-width:96px}
+.seg{display:flex;border:1px solid rgba(255,255,255,.18);border-radius:7px;overflow:hidden}
+.seg button{background:transparent;border:none;color:#cfc7ba;padding:5px 10px;font:12px Arial;cursor:pointer}
+.seg button+button{border-left:1px solid rgba(255,255,255,.14)}
+.seg button.on{background:var(--red);color:#fff}
+select{background:#2a221b;color:#eee;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px 6px;font:12px Arial}
+.chk{display:flex;align-items:center;gap:5px;color:#d9d2c5;font:13px Arial;cursor:pointer;user-select:none}
+.chk input{accent-color:var(--red);width:15px;height:15px;cursor:pointer}
+.voice{margin-left:auto;color:#fff;font:15px Arial;background:rgba(255,255,255,.1);border-radius:5px;padding:3px 9px}
+.voice.active{animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.45}}
+.debug-section{margin-top:14px;background:#fff;border:2px solid #d4cfc7;border-radius:8px;padding:14px}
+.debug-section h3{font-size:14px;color:var(--mut);margin-bottom:10px}
+.scene-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:7px}
+.scene-list button{padding:7px;border:2px solid #d4cfc7;border-radius:6px;background:#fff;color:var(--txt);
+  font:12px Georgia;cursor:pointer;text-align:left}
+.scene-list button:hover{border-color:#1e40af}
+.scene-list button.active{background:#1e40af;color:#fff;border-color:#1e40af}
+.subtitle{width:max-content;max-width:90%}
+.scene-list{display:flex!important;flex-direction:column;gap:8px}
+.scene-list button{width:100%;padding:10px 12px;line-height:1.5;font:14px Georgia,serif}
+.scene-list button b{display:block;font-size:13px;color:#1e40af;margin-bottom:3px}
+.scene-list button span{display:block;font-weight:normal;color:#4a3f2e}
+.scene-list button.active b,.scene-list button.active span{color:#fff}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="presentation">
+    <canvas id="canvas"></canvas>
+    <div class="scene-indicator" id="sceneIndicator"></div>
+    <div class="subtitle" id="subtitle" style="opacity:0"></div>
+  </div>
+
+  <div class="controls">
+    <div class="progress-zone" id="progressZone">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div id="ticksLayer"></div>
+    </div>
+    <div class="btn-row">
+      <button class="ctl" id="btnPlay" title="Грати / Пауза (Space)"><span id="icoPlay"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span><span id="icoPause" style="display:none"><svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg></span></button>
+      <button class="ctl" id="btnStop" title="Спочатку (R)"><svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg></button>
+      <button class="ctl" id="btnPrev" title="Попередня сцена (←)"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+      <button class="ctl" id="btnNext" title="Наступна сцена (→)"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+      <span class="time" id="timeDisp">0:00 / 0:00</span>
+      <div class="seg" id="engineSeg" title="Рушій озвучення">
+        <button data-e="hf" title="Українська нейромережа (безкоштовне демо на Hugging Face)">UA нейро</button>
+        <button data-e="webspeech">Web Speech</button>
+        <button data-e="google" class="on">Google TTS</button>
+        <button data-e="none">Тихо</button>
+      </div>
+      <select id="hfVoice" title="Голос (для UA нейро)"><option value="Тетяна (жіночий) 👩">Тетяна</option><option value="Лада (жіночий) 👩">Лада</option><option value="Дмитро (чоловічий) 👨">Дмитро</option><option value="Микита (чоловічий) 👨" selected>Микита</option><option value="Олекса (чоловічий) 👨">Олекса</option></select>
+      <select id="speedSel" title="Швидкість">
+        <option value="0.75">0.75×</option><option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option><option value="1.5">1.5×</option>
+      </select>
+      <label class="chk"><input type="checkbox" id="chkSubs"><span>Субтитри</span></label>
+      <label class="chk"><input type="checkbox" id="chkLabels" checked><span>Назви сцен</span></label>
+      <label class="chk"><input type="checkbox" id="chkDebug"><span>Транскрипт</span></label>
+      <span class="voice" id="voiceState">🔈</span>
+    </div>
+  </div>
+
+  <div class="debug-section" id="debugSection" style="display:none">
+    <h3>📜 Транскрипт: натисніть на сцену, щоб перейти до неї</h3>
+    <div class="scene-list" id="sceneList"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================= БАЗА ================= */
+const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d');
+const subtitleEl=document.getElementById('subtitle'),sceneIndicator=document.getElementById('sceneIndicator');
+const progressZone=document.getElementById('progressZone'),progressFill=document.getElementById('progressFill');
+const timeDisp=document.getElementById('timeDisp'),voiceState=document.getElementById('voiceState');
+const ticksLayer=document.getElementById('ticksLayer'),sceneListEl=document.getElementById('sceneList');
+const debugSection=document.getElementById('debugSection');
+const chkSubs=document.getElementById('chkSubs'),chkLabels=document.getElementById('chkLabels'),chkDebug=document.getElementById('chkDebug');
+const btnPlay=document.getElementById('btnPlay'),btnStop=document.getElementById('btnStop'),
+      btnPrev=document.getElementById('btnPrev'),btnNext=document.getElementById('btnNext'),
+      icoPlay=document.getElementById('icoPlay'),icoPause=document.getElementById('icoPause'),
+      speedSel=document.getElementById('speedSel'),engineSeg=document.getElementById('engineSeg');
+
+let W=0,H=0,K=1,DPR=1;
+function resize(){const r=canvas.getBoundingClientRect();DPR=window.devicePixelRatio||1;
+  W=r.width;H=r.height;canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);
+  K=Math.max(.6,Math.min(1.1,W/1150));}
+window.addEventListener('resize',resize);resize();
+
+const TAU=Math.PI*2;
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const lerp2=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t)];
+const eo=t=>1-Math.pow(1-t,3);
+const eio=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const eob=t=>{const c=1.70158;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2)};
+const stag=(t,s,d)=>clamp((t-s)/d,0,1);
+const rnd=i=>{const x=Math.sin(i*127.1+311.7)*43758.5453;return x-Math.floor(x)};
+const BLUE='#2563eb',RED='#dc2626';
+let gtNow=0;
+function fnt(px,bold){ctx.font=(bold?'bold ':'')+Math.round(px*K)+'px Georgia,"Times New Roman",serif'}
+function fntE(px){ctx.font=Math.round(px*K)+'px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif'}
+function txt(t,x,y,al){ctx.textAlign=al||'center';ctx.fillText(t,x,y)}
+function rr(x,y,w,h,r){r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+function card(x,y,w,h){ctx.fillStyle='rgba(255,255,255,.93)';rr(x,y,w,h,10*K);ctx.fill();
+  ctx.strokeStyle='#d4cfc7';ctx.lineWidth=1.5*K;ctx.stroke()}
+function chip(text,x,y,al,col){col=col||'#1e40af';if(al<=0)return;ctx.globalAlpha=al;fnt(16,true);
+  const tw=ctx.measureText(text).width;ctx.fillStyle='rgba(255,255,255,.95)';rr(x-tw/2-10*K,y-14*K,tw+20*K,26*K,7*K);ctx.fill();
+  ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.stroke();ctx.fillStyle=col;txt(text,x,y+5*K);ctx.globalAlpha=1}
+function stamp(text,x,y,size,color,st,t0,rot){const p=eob(stag(st,t0,0.45));if(p<=0)return;
+  ctx.save();ctx.translate(x,y);ctx.rotate((rot||-0.1)*(1-p*.5));ctx.scale(p,p);
+  fnt(size,true);const w2=ctx.measureText(text).width+36*K;
+  ctx.fillStyle='rgba(255,255,255,.93)';rr(-w2/2,-size*.72*K,w2,size*1.44*K,10*K);ctx.fill();
+  ctx.strokeStyle=color;ctx.lineWidth=3*K;ctx.stroke();ctx.fillStyle=color;txt(text,0,size*.34*K);ctx.restore()}
+function shock(x,y,st,t0,color,R){R=R||180;const u=stag(st,t0,0.9);if(u<=0||u>=1)return;
+  ctx.strokeStyle=color;ctx.globalAlpha=(1-u)*.8;ctx.lineWidth=(4*(1-u)+1)*K;
+  ctx.beginPath();ctx.arc(x,y,u*R*K,0,TAU);ctx.stroke();ctx.globalAlpha=1}
+function confetti(x,y,st,t0,n){for(let i=0;i<n;i++){const u=(st-t0)-i*.012;if(u<0||u>2.6)continue;
+  const a=rnd(i)*TAU,v=(110+rnd(i+50)*170)*K,dx=Math.cos(a)*v*u*.6,dy=Math.sin(a)*v*u*.6+140*K*u*u;
+  ctx.globalAlpha=clamp(1-u/2.6,0,1);ctx.fillStyle=[BLUE,RED,'#eab308','#16a34a'][i%4];
+  ctx.beginPath();ctx.arc(x+dx,y+dy,3.5*K,0,TAU);ctx.fill()}ctx.globalAlpha=1}
+function typeText(text,st,t0){const n=Math.floor(Math.max(0,(st-t0))*30);if(n<=0)return null;
+  return text.slice(0,n)+(n<text.length&&Math.floor(gtNow*3)%2?'▌':'')}
+function caption(text,st,t0,y){const shown=typeText(text,st,t0);if(!shown)return;
+  fnt(19);const tw=ctx.measureText(text).width;
+  ctx.fillStyle='rgba(255,255,255,.88)';rr(W/2-tw/2-14,y-24*K,tw+28,34*K,8);ctx.fill();
+  ctx.strokeStyle='#d4cfc7';ctx.lineWidth=1;ctx.stroke();ctx.fillStyle='#4a3f2e';txt(shown,W/2,y)}
+function sceneTitle(t,st,col){col=col||'#2c2416';const p=eob(stag(st,0.1,0.6));if(p>0){
+  ctx.save();ctx.translate(W/2,44);ctx.scale(Math.max(.001,p),Math.max(.001,p));
+  fnt(30,true);ctx.fillStyle=col;txt(t,0,0);ctx.restore()}
+  const u=eo(stag(st,0.4,0.5));if(u>0){ctx.strokeStyle='#e11d48';ctx.lineWidth=3*K;ctx.beginPath();
+  ctx.moveTo(W/2-95*K*u,56);ctx.lineTo(W/2+95*K*u,56);ctx.stroke()}}
+function arrowHead(x,y,ang,size,col,a){if(a<=0)return;ctx.save();ctx.translate(x,y);ctx.rotate(ang);ctx.globalAlpha=a;
+  ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(-size,-size*0.7);ctx.lineTo(size*0.6,0);ctx.lineTo(-size,size*0.7);ctx.closePath();ctx.fill();ctx.restore()}
+function curveArrow(x1,y1,x2,y2,bend,col,pop,lw){if(pop<=0)return;const mx=(x1+x2)/2,my=(y1+y2)/2;
+  const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy)||1;const nx=-dy/len,ny=dx/len;
+  const cx2=mx+nx*bend,cy2=my+ny*bend;
+  ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.lineCap='round';ctx.globalAlpha=pop;
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.quadraticCurveTo(cx2,cy2,x2,y2);ctx.stroke();
+  arrowHead(x2,y2,Math.atan2(y2-cy2,x2-cx2),8*K,col,pop);ctx.globalAlpha=1}
+function heart(x,y,s,a){ctx.save();ctx.translate(x,y);ctx.scale(s/8,s/8);ctx.globalAlpha=a;
+  ctx.fillStyle='#ec4899';ctx.beginPath();ctx.moveTo(0,4);ctx.bezierCurveTo(-6,-2,-3,-8,0,-3);
+  ctx.bezierCurveTo(3,-8,6,-2,0,4);ctx.fill();ctx.restore()}
+function hearts(x,y,st,t0,n){for(let i=0;i<n;i++){const u=st-t0-i*0.5;if(u<0||u>2.4)continue;
+  heart(x+Math.sin(u*5+i*2)*12*K,y-14*K-u*50*K,(1.6+(i%2)*0.8)*K*2.2,clamp(1-u/2.4,0,1)*0.9)}}
+function popWrap(x,y,p,fn){if(p<=0)return;ctx.save();ctx.translate(x,y);ctx.scale(p,p);ctx.translate(-x,-y);fn();ctx.restore()}
+function pointer(x1,y1,x2,y2,st,t0){const u=stag(st,t0,0.4);if(u<=0)return;
+  ctx.globalAlpha=u;ctx.strokeStyle='#94a3b8';ctx.lineWidth=1.6;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#94a3b8';ctx.beginPath();ctx.arc(x2,y2,3.5*K,0,TAU);ctx.fill();ctx.globalAlpha=1}
+function wordChips(cx,cy,word,st,t0,active,doneN,sc){sc=sc||1;const n=word.length,gap=54*K*sc;const x0=cx-(n-1)*gap/2;
+  word.forEach((L,i)=>{const p=eob(stag(st,t0+i*0.3,0.4));if(p<=0)return;
+    const x=x0+i*gap,col=(L==='B')?BLUE:RED,act=(i===active);
+    const sc2=act?(1+0.1*Math.sin(gtNow*6)):1;
+    ctx.save();ctx.translate(x,cy);ctx.scale(sc*sc2*p,sc*sc2*p);
+    ctx.beginPath();ctx.arc(0,0,16*K,0,TAU);ctx.fillStyle=col;ctx.fill();
+    ctx.strokeStyle=act?'#fff':'rgba(15,23,42,.35)';ctx.lineWidth=act?3:1.5;ctx.stroke();
+    if(act){ctx.globalAlpha=0.5+0.3*Math.sin(gtNow*7);ctx.beginPath();ctx.arc(0,0,23*K,0,TAU);
+      ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();ctx.globalAlpha=1}
+    fnt(15,true);ctx.fillStyle='#fff';txt(L==='B'?'С':'Ч',0,5.5*K);
+    if(i<doneN){fnt(13,true);ctx.fillStyle='#22c55e';txt('✓',13*K,-13*K)}
+    ctx.restore()})}
+function waves(x,y,st,t0,col){if(st<t0)return;const u0=st-t0;
+  for(let k=0;k<3;k++){const u=(u0*1.1-k*0.33)%1;if(u<0)continue;
+    ctx.globalAlpha=(1-u)*0.8;ctx.strokeStyle=col;ctx.lineWidth=2*K;
+    ctx.beginPath();ctx.arc(x,y,(6+u*20)*K,-0.9,0.9);ctx.stroke()}ctx.globalAlpha=1}
+function drawWalkerDot(x,y,col){ctx.beginPath();ctx.arc(x,y-10*K,9*K,0,TAU);ctx.fillStyle=col;ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle='#1f2937';ctx.beginPath();ctx.arc(x-3*K,y-12*K,1.4*K,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.arc(x+3*K,y-12*K,1.4*K,0,TAU);ctx.fill()}
+
+/* ================= ПОТУЖНОСТІ НЕСКІНЧЕННИХ МНОЖИН ================= */
+const GRN='#16a34a',AMB='#d97706',INK='#2c2416',GOLD='#eab308',PINKC='#ec4899',VIO='#7c3aed',CYAN='#0891b2';
+const gcol=(g,l)=>'hsl('+Math.round((g*47)%360)+',62%,'+(l||60)+'%)';
+const Rn=(i,j)=>(i+j-1)*(i+j-2)/2+j;
+const invR=n=>{const d=Math.ceil((Math.sqrt(8*n+1)-1)/2),j=n-d*(d-1)/2;return[d+1-j,j]};
+function wrap(s,x,y,n,lh,al){let ln='';s.split(' ').forEach(q=>{if((ln+' '+q).length>n){txt(ln,x,y,al);ln=q;y+=lh*K}else ln=ln?ln+' '+q:q});txt(ln,x,y,al);return y}
+function note(x,y,w,h,col,s,n,a){if(a<=0)return;popWrap(x+w/2,y+h/2,a,()=>{card(x,y,w,h);fnt(15,true);ctx.fillStyle=col;wrap(s,x+w/2,y+h*.4,n,21)})}
+function dot(x,y,c,r){ctx.fillStyle=c;ctx.beginPath();ctx.arc(x,y,(r||7)*K,0,TAU);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke()}
+function spaceBg(gt){const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#e6ecff');g.addColorStop(1,'#f5f0ff');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  for(let i=0;i<80;i++){const x=rnd(i)*W,y=rnd(i+300)*H*.85,tw=.5+.5*Math.sin(gt*1.5+i);ctx.fillStyle='rgba(59,70,140,'+(.2+.3*tw)+')';ctx.beginPath();ctx.arc(x,y,(.8+rnd(i+600)*1.5)*K,0,TAU);ctx.fill()}}
+function porter(x,y,s,gt,arm){ctx.save();ctx.translate(x,y);ctx.scale(s,s);
+  ctx.fillStyle='#1e3a8a';rr(-36,22,72,80,14);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.moveTo(-10,22);ctx.lineTo(0,44);ctx.lineTo(10,22);ctx.closePath();ctx.fill();
+  ctx.fillStyle=RED;[[-1],[1]].forEach(a=>{ctx.beginPath();ctx.moveTo(0,36);ctx.lineTo(a[0]*11,30);ctx.lineTo(a[0]*11,42);ctx.closePath();ctx.fill()});
+  ctx.fillStyle=GOLD;[56,72,88].forEach(yy=>{ctx.beginPath();ctx.arc(0,yy,3.5,0,TAU);ctx.fill()});
+  const hx=58+Math.sin(gt*3)*3*arm,hy=24-arm*12;ctx.strokeStyle='#1e3a8a';ctx.lineWidth=14;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(32,42);ctx.lineTo(hx,hy);ctx.stroke();ctx.fillStyle='#fcd9b6';ctx.beginPath();ctx.arc(hx,hy,8,0,TAU);ctx.fill();
+  ctx.fillStyle='#fcd9b6';ctx.beginPath();ctx.arc(0,0,26,0,TAU);ctx.fill();ctx.strokeStyle='#a8825a';ctx.lineWidth=1.5;ctx.stroke();
+  ctx.fillStyle='#b91c1c';rr(-24,-36,48,20,6);ctx.fill();ctx.fillStyle=GOLD;ctx.fillRect(-24,-20,48,4);ctx.fillStyle='#7f1d1d';ctx.fillRect(-29,-16,58,5);
+  const bl=Math.sin(gt*1.3)>.97?1:6;ctx.fillStyle=INK;ctx.fillRect(-12,-4,5,bl);ctx.fillRect(7,-4,5,bl);
+  ctx.strokeStyle='#4a3f2e';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-15,11);ctx.quadraticCurveTo(0,4,0,10);ctx.quadraticCurveTo(0,4,15,11);ctx.stroke();ctx.restore()}
+function ship(x,y,s,gt,col){ctx.save();ctx.translate(x,y);ctx.scale(s,s);
+  ctx.fillStyle='rgba(251,146,60,'+(.6+.3*Math.sin(gt*20))+')';ctx.beginPath();ctx.moveTo(-14,16);ctx.lineTo(0,34+Math.sin(gt*25)*5);ctx.lineTo(14,16);ctx.closePath();ctx.fill();
+  ctx.fillStyle=col;ctx.beginPath();ctx.ellipse(0,0,70,20,0,0,TAU);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle='rgba(186,230,253,.92)';ctx.beginPath();ctx.ellipse(0,-10,26,20,0,Math.PI,TAU);ctx.fill();ctx.strokeStyle='#0369a1';ctx.stroke();
+  for(let k=-2;k<=2;k++){ctx.fillStyle='#fde68a';ctx.beginPath();ctx.arc(k*22,4,4,0,TAU);ctx.fill()}ctx.restore()}
+function holo(cx,cy,sz,gt,al){const fl=.86+.14*Math.sin(gt*37)*Math.sin(gt*5.3),gl=Math.sin(gt*3.1)>.985?6*K:0;ctx.save();ctx.globalAlpha=al*fl;
+  ctx.fillStyle='rgba(34,211,238,.09)';ctx.beginPath();ctx.moveTo(cx-40*K,cy+sz*1.1);ctx.lineTo(cx+40*K,cy+sz*1.1);ctx.lineTo(cx+sz*1.15,cy-sz*.5);ctx.lineTo(cx-sz*1.15,cy-sz*.5);ctx.closePath();ctx.fill();
+  ctx.fillStyle='rgba(8,145,178,.3)';ctx.beginPath();ctx.ellipse(cx,cy+sz*1.1,64*K,10*K,0,0,TAU);ctx.fill();ctx.strokeStyle=CYAN;ctx.lineWidth=2;ctx.stroke();
+  const ph=gt*.9,pts=[];for(let i=0;i<=120;i++){const t=i/120*TAU,den=1+Math.sin(t)**2,x=Math.cos(t)/den,y=Math.sin(t)*Math.cos(t)/den,z=.55*Math.sin(t),xr=x*Math.cos(ph)+z*Math.sin(ph),zr=-x*Math.sin(ph)+z*Math.cos(ph),p=1/(1-zr*.4);pts.push([cx+gl+xr*sz*p,cy-y*sz*p,zr,p])}
+  [[9,.12],[4,.55],[1.6,.95]].forEach(pw=>{for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i];ctx.strokeStyle='hsla('+(195+50*b[2])+',90%,'+(pw[0]<2?82:48)+'%,'+pw[1]+')';ctx.lineWidth=pw[0]*K*b[3];ctx.lineCap='round';ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke()}});
+  for(let yy=cy-sz*.65;yy<cy+sz*.65;yy+=4*K){ctx.strokeStyle='rgba(8,145,178,.13)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cx-sz*1.1,yy);ctx.lineTo(cx+sz*1.1,yy);ctx.stroke()}
+  ctx.restore()}
+function corridor(st,gt,al){al=al==null?1:al;ctx.globalAlpha=al;const VP=[W*.5,H*.46],hw=W*.42,fh=H*.2,cam=.5*eo(stag(st,0,18)),P=(sd,v,f)=>[VP[0]+sd*hw*f,VP[1]+v*fh*f];
+  const poly=(pts,fill)=>{ctx.fillStyle=fill;ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.closePath();ctx.fill()};
+  poly([P(-1,1,.02),P(1,1,.02),P(1,1,4),P(-1,1,4)],'#c7d2fe');poly([P(-1,1,.02),P(-1,-1.1,.02),P(-1,-1.1,4),P(-1,1,4)],'#dfe6ff');poly([P(1,1,.02),P(1,-1.1,.02),P(1,-1.1,4),P(1,1,4)],'#dfe6ff');poly([P(-1,-1.1,.02),P(1,-1.1,.02),P(1,-1.1,4),P(-1,-1.1,4)],'#eef2ff');
+  ctx.strokeStyle='rgba(99,102,241,.25)';ctx.lineWidth=1.2;[-1,-.5,0,.5,1].forEach(s=>{const a=P(s,1,.02),b=P(s,1,4);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke()});
+  const sp=1.15;for(let k=0;k<40;k++){const d=k*sp-(cam%sp)+.1;if(d<.25)continue;const f=1/d,a=P(-1,1,f),b=P(1,1,f);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke()}
+  for(let k=60;k>=1;k--){const sd=k%2?-1:1,d1=Math.ceil(k/2)*sp-cam+.2,d2=d1+.62;if(d1<.28)continue;const fd=1/d1,fe=1/d2,p1=P(sd,1,fd),p2=P(sd,1,fe),p3=P(sd,-.3,fe),p4=P(sd,-.3,fd);
+    ctx.globalAlpha=al*clamp(1.15-d1/32,.25,1);poly([p1,p2,p3,p4],'#fde68a');ctx.strokeStyle='#92400e';ctx.lineWidth=clamp(fd*2,.6,3);ctx.beginPath();[p1,p2,p3,p4].forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.closePath();ctx.stroke();
+    const mf=(fd+fe)/2,sz=34*mf;if(sz>5){const q=P(sd,-.05,mf);fnt(sz,true);ctx.fillStyle='#7c2d12';txt(k,q[0],q[1]);const hq=P(sd,.4,fd*.5+fe*.5);ctx.fillStyle='#92400e';ctx.beginPath();ctx.arc(hq[0],hq[1],Math.max(.8,3*mf),0,TAU);ctx.fill()}ctx.globalAlpha=al}
+  ctx.globalAlpha=al;const g=ctx.createRadialGradient(VP[0],VP[1],0,VP[0],VP[1],W*.2);g.addColorStop(0,'rgba(255,255,255,.95)');g.addColorStop(1,'rgba(255,255,255,0)');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  fnt(22,true);ctx.fillStyle='#7c3aed';txt('…',VP[0],VP[1]+8*K);ctx.globalAlpha=1}
+function rot3(kind,cx,cy,sz,gt,al){const ph=gt*.7+(kind==='plane'?0:.6),el=.5,pr=(x,y,z)=>{const X=x*Math.cos(ph)+z*Math.sin(ph),Z=-x*Math.sin(ph)+z*Math.cos(ph);return[cx+X*sz,cy+(Z*Math.sin(el)-y*Math.cos(el))*sz]};
+  ctx.save();ctx.globalAlpha=al;ctx.lineCap='round';
+  if(kind==='plane'){const q=[[-1,-1],[1,-1],[1,1],[-1,1]].map(p=>pr(p[0],0,p[1]));ctx.fillStyle='rgba(8,145,178,.18)';ctx.beginPath();q.forEach((p,k)=>k?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.closePath();ctx.fill();ctx.strokeStyle=CYAN;ctx.lineWidth=2.5*K;ctx.stroke();
+    ctx.lineWidth=1*K;ctx.strokeStyle='rgba(8,145,178,.6)';for(let k=-.6;k<=.61;k+=.4){let a=pr(k,0,-1),b=pr(k,0,1);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();a=pr(-1,0,k);b=pr(1,0,k);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke()}}
+  else if(kind==='seg'){const a=pr(-.8,0,0),b=pr(.8,0,0);ctx.strokeStyle=BLUE;ctx.lineWidth=5*K;ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();[a,b].forEach(p=>{ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(p[0],p[1],6*K,0,TAU);ctx.fill();ctx.strokeStyle=BLUE;ctx.lineWidth=3*K;ctx.stroke()})}
+  else{const a=pr(-2.4,0,0),b=pr(2.4,0,0),g=ctx.createLinearGradient(a[0],a[1],b[0],b[1]);g.addColorStop(0,'rgba(124,58,237,0)');g.addColorStop(.2,'rgba(124,58,237,1)');g.addColorStop(.8,'rgba(124,58,237,1)');g.addColorStop(1,'rgba(124,58,237,0)');ctx.strokeStyle=g;ctx.lineWidth=5*K;ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke()}
+  ctx.restore()}
+function chain(y,vals,col,al,lab){fnt(13,true);ctx.fillStyle=col;ctx.globalAlpha=al;txt(lab,W*.08,y+5*K,'left');vals.forEach((v,k)=>{const a=eo(stag(gt0,0,1));const x=W*.22+k*W*.075;ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y,15*K,0,TAU);ctx.fill();ctx.strokeStyle=col;ctx.lineWidth=2.5*K;ctx.stroke();fnt(13,true);ctx.fillStyle=INK;txt(v,x,y+4*K)});fnt(20,true);ctx.fillStyle='#64748b';txt('…',W*.22+vals.length*W*.075,y+6*K);ctx.globalAlpha=1}
+let gt0=0;
+function scHook(w,h,st,gt){spaceBg(gt);
+  const qa=1-eo(stag(st,14,1.5));
+  if(qa>0){
+    chip('цілих чисел більше, ніж парних?',W*.5,H*.095,eo(stag(st,.8,.5))*qa,BLUE);
+    const c1=eo(stag(st,1.2,.8))*qa;if(c1>0){const nat=[1,2,3,4,5,6,7,8,9],ev=nat.map(n=>2*n);ctx.globalAlpha=c1;
+      chain(H*.17,nat,BLUE,c1,'натуральні');chain(H*.255,ev,GRN,c1,'парні');
+      const lk=eo(stag(st,3,1.5));ctx.strokeStyle='rgba(100,116,139,.5)';ctx.lineWidth=1.5*K;nat.forEach((n,k)=>{if(lk>0){const x=W*.22+k*W*.075;ctx.beginPath();ctx.moveTo(x,H*.17+15*K);ctx.lineTo(x,lerp(H*.17+15*K,H*.255-15*K,lk));ctx.stroke()}});ctx.globalAlpha=1}
+    chip('точок на прямій більше, ніж на відрізку, а на площині ще більше?',W*.5,H*.335,eo(stag(st,4.6,.5))*qa,VIO);
+    const ra=eo(stag(st,5.4,.8))*qa;if(ra>0){[['seg',.22,'відрізок'],['line',.5,'пряма'],['plane',.78,'площина']].forEach(o=>{rot3(o[0],W*o[1],H*.5,o[0]==='line'?W*.045:W*.055,gt,ra);ctx.globalAlpha=ra;fnt(14,true);ctx.fillStyle='#475569';txt(o[2],W*o[1],H*.6);ctx.globalAlpha=1})}
+    chip('нескінченні множини взагалі некоректно порівнювати?',W*.5,H*.68,eo(stag(st,8.4,.5))*qa,RED);
+    if(st>12.2)chip('якщо ваші відповіді «так» — вам у готель «Нескінченність»',W*.5,H*.75,eo(stag(st,12.2,.5))*qa,'#475569')}
+  {const ca=eo(stag(st,14,2));if(ca>0)corridor(Math.max(0,st-14),gt,ca)}
+  holo(W*.5,H*.2,H*.1,gt,eo(stag(st,16,1.5)));
+  const na=eo(stag(st,17.5,1.2));if(na>0){ctx.globalAlpha=na;const t='INFINITY',cw=24*K;fnt(30,true);ctx.shadowColor='rgba(34,211,238,.9)';ctx.shadowBlur=12;ctx.fillStyle='#0e7490';for(let i=0;i<t.length;i++)txt(t[i],W*.5-(t.length-1)*cw/2+i*cw,H*.335);ctx.shadowBlur=0;fnt(17,true);ctx.fillStyle='#5b21b6';txt('Готель «Нескінченність»',W*.5,H*.375);ctx.globalAlpha=1}
+  const dk=eo(stag(st,19,1));if(dk>0){ctx.globalAlpha=dk;porter(W*.12,H*.5,1.25*K,gt,eo(stag(st,24,1)));ctx.fillStyle='#a16207';rr(W*.02,H*.66,W*.3,H*.1,8);ctx.fill();ctx.fillStyle='#ca8a04';ctx.fillRect(W*.02,H*.66,W*.3,8*K);ctx.strokeStyle='#713f12';ctx.lineWidth=2;rr(W*.02,H*.66,W*.3,H*.1,8);ctx.stroke();
+    ctx.fillStyle='#fff';rr(W*.17,H*.585,W*.14,H*.065,8*K);ctx.fill();ctx.strokeStyle=RED;ctx.lineWidth=3*K;ctx.stroke();fnt(13,true);ctx.fillStyle='rgba(185,28,28,'+(.65+.35*Math.sin(gt*5))+')';txt('ВІЛЬНИХ МІСЦЬ',W*.24,H*.612);txt('НЕМАЄ',W*.24,H*.636);ctx.globalAlpha=1}
+  if(st>15)chip('в нескінченному космосі є готель, у якому нескінченно багато номерів',W*.5,H*.1,eo(stag(st,15,.6)),'#475569');
+  if(st>25)chip('«Усе зайнято, панове!»',W*.2,H*.4,eo(stag(st,25,.5)),RED)}
+/* --- кімнати --- */
+const RN=14;
+const rg=()=>({x0:W*.05,dx:W*.9/RN,y:H*.38,h:H*.2});
+function drawRooms(){const G=rg();for(let n=1;n<=RN;n++){const x=G.x0+(n-1)*G.dx;ctx.fillStyle='#fff';rr(x+2,G.y,G.dx-4,G.h,8*K);ctx.fill();ctx.fillStyle='rgba(253,230,138,.35)';ctx.fill();ctx.strokeStyle='#94a3b8';ctx.lineWidth=2;ctx.stroke();fnt(13,true);ctx.fillStyle='#475569';txt(n,x+G.dx/2,G.y+G.h+18*K)}fnt(28,true);ctx.fillStyle='#64748b';txt('…',W*.975,G.y+G.h/2+8*K)}
+function guestAt(r,col,label,y,al){const G=rg();if(r<-.4||r>RN+.5)return;const x=G.x0+(r-.5)*G.dx,yy=y==null?G.y+G.h/2:y;ctx.globalAlpha=al==null?1:al;ctx.fillStyle=col;ctx.beginPath();ctx.arc(x,yy,G.dx*.3,0,TAU);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();fnt(13,true);ctx.fillStyle='#fff';txt(label,x,yy+5*K);ctx.globalAlpha=1}
+function scOne(w,h,st,gt){spaceBg(gt);sceneTitle('Ще один гість',st);drawRooms();const G=rg(),t=eo(stag(st,7,3.5));
+  for(let g=1;g<=RN;g++)guestAt(g+t,gcol(g),g);
+  const nr=st<3?-.4:(st<7?lerp(-.4,-.1,Math.sin((st-3)*2)*.5+.5):lerp(-.1,1,t));guestAt(nr,GOLD,'★');
+  if(st>=5&&st<9)for(let n=1;n<RN;n++){const x=G.x0+(n-.5)*G.dx;curveArrow(x+8*K,G.y-6*K,x+G.dx-8*K,G.y-6*K,-18*K,'#7c3aed',eo(stag(st,5+n*.05,.5)),2*K)}
+  chip('нових гостей: 1. Вільних номерів: 0',W*.5,H*.14,eo(stag(st,1.5,.5)),RED);
+  if(st>3&&st<7)chip('«Мені потрібен номер!»',W*.15,H*.3,eo(stag(st,3,.4)),GOLD);
+  if(st>5)chip('«Кожен — в сусідній номер: n → n + 1!»',W*.6,H*.3,eo(stag(st,5,.4)),VIO);
+  porter(W*.9,H*.68,.7*K,gt,.5);
+  if(st>11)stamp('Номер 1 вільний!',W*.5,H*.7,26,GRN,st,11,-.03);
+  if(st>14)chip('нескінченно багато номерів: ніхто не лишився без кімнати',W*.5,H*.8,eo(stag(st,14,.5)),'#475569')}
+function scTwo(w,h,st,gt){spaceBg(gt);sceneTitle('Корабель із нескінченним екіпажем',st);drawRooms();const G=rg(),t=eo(stag(st,4,4));
+  for(let g=1;g<=RN;g++)guestAt(lerp(g,2*g,t),gcol(g),g);
+  const sx=W*.5,sy=H*.2+Math.sin(gt*2)*4*K;if(st<18)ship(sx,sy,1*K,gt,'#7c3aed');
+  fnt(14,true);ctx.fillStyle='#4c1d95';txt('пасажири 1, 2, 3, …',sx,sy-38*K);
+  for(let j=1;j<=7;j++){const d=eo(stag(st,9+j*.45,1)),tr=2*j-1;if(d>0){const x=G.x0+(tr-.5)*G.dx;const px=lerp(sx,x,d),py=lerp(sy,G.y+G.h/2,d);ctx.globalAlpha=1;ctx.fillStyle=GRN;ctx.beginPath();ctx.arc(px,py,G.dx*.3,0,TAU);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();fnt(13,true);ctx.fillStyle='#fff';txt(j,px,py+5*K)}}
+  if(st>5)chip('гості n → кімната 2n; усі непарні вільні',W*.5,H*.14,eo(stag(st,5,.5)),VIO);
+  if(st>9)chip('пасажир j → кімната 2j − 1',W*.5,H*.7,eo(stag(st,9,.5)),GRN);
+  if(st>7&&st<14)chip('→ далеко за межею екрана',W*.88,H*.3,eo(stag(st,7,.5)),'#64748b');
+  porter(W*.1,H*.68,.7*K,gt,.5);if(st>16)stamp('ℵ₀ + ℵ₀ = ℵ₀',W*.7,H*.78,26,GRN,st,16,-.03)}
+/* --- таблиця кораблів --- */
+const GN=8;
+const gg=()=>{const c=H*.075,x0=W*.14,y0=H*.2;return{c:c,x0:x0,y0:y0,X:j=>x0+(j-.5)*c,Y:i=>y0+(i-.5)*c}};
+function drawGrid(G,gt,tint){for(let i=1;i<=GN;i++)for(let j=1;j<=GN;j++){ctx.fillStyle=tint?'hsla('+((i+j-1)*43%360)+',70%,93%,1)':'#fff';rr(G.x0+(j-1)*G.c+2,G.y0+(i-1)*G.c+2,G.c-4,G.c-4,5*K);ctx.fill();ctx.strokeStyle='#cbd5e1';ctx.lineWidth=1.2;ctx.stroke()}
+  fnt(12,true);ctx.fillStyle='#64748b';for(let j=1;j<=GN;j++)txt(j,G.X(j),G.y0-8*K);fnt(11);txt('місце j →',G.x0+G.c*2,G.y0-24*K);
+  for(let i=1;i<=GN;i++){ship(G.x0-36*K,G.Y(i),.2*K,gt,gcol(i*5,55));fnt(12,true);ctx.fillStyle='#64748b';txt(i,G.x0-12*K,G.Y(i)+4*K,'right')}fnt(11);ctx.fillStyle='#64748b';txt('корабель i',G.x0-30*K,G.y0-8*K)}
+function dots(G){for(let i=1;i<=GN;i++)for(let j=1;j<=GN;j++){ctx.fillStyle=gcol(i*5,62);ctx.beginPath();ctx.arc(G.X(j),G.Y(i),G.c*.26,0,TAU);ctx.fill()}}
+function cnum(G,i,j,n,col){fnt(12,true);ctx.fillStyle=col||'#fff';txt(n,G.X(j),G.Y(i)+4*K)}
+function scTable(w,h,st,gt){sceneTitle('Нескінченно багато кораблів',st);const G=gg();drawGrid(G,gt,false);ctx.globalAlpha=eo(stag(st,.5,1));dots(G);ctx.globalAlpha=1;
+  for(let j=1;j<=GN;j++){const a=eo(stag(st,3+j*.6,.4));if(a>0){ctx.globalAlpha=a;ctx.strokeStyle=GOLD;ctx.lineWidth=3*K;rr(G.x0+(j-1)*G.c+3,G.y0+3,G.c-6,G.c-6,5*K);ctx.stroke();cnum(G,1,j,j,INK);ctx.globalAlpha=1}}
+  if(st>9){fnt(16,true);ctx.fillStyle=GOLD;txt('→ 9, 10, 11, … ∞',G.x0+GN*G.c+10*K,G.Y(1)+5*K,'left')}
+  if(st>11){const n=Math.floor(8+Math.pow(st-11,2)*60);note(W*.62,H*.2,W*.35,H*.16,AMB,'селимо перший корабель: номер уже '+n+', а другий чекає',40,eo(stag(st,11,.5)))}
+  if(st>12.5){const a=.5+.5*Math.sin(gt*5);ctx.strokeStyle='rgba(239,68,68,'+a+')';ctx.lineWidth=3*K;rr(G.x0+2,G.y0+G.c+2,G.c-4,G.c-4,5*K);ctx.stroke()}
+  if(st>15)stamp('до корабля №2 не дійдемо ніколи',W*.78,H*.5,20,RED,st,15,-.03);
+  note(W*.62,H*.56,W*.35,H*.17,BLUE,'потрібна нумерація, що досягає кожну клітину за скінченну кількість кроків',40,eo(stag(st,19,.5)))}
+function scZig(w,h,st,gt){sceneTitle('Нумерація зигзагом по діагоналях',st);const G=gg();drawGrid(G,gt,true);
+  const c=st<2?0:st<9?(st-2)*1.45:st<17?10+(st-9)*3.3:st<21?36+(st-17)*20:200,cf=Math.floor(c);
+  for(let i=1;i<=GN;i++)for(let j=1;j<=GN;j++){const n=Rn(i,j);if(n<=c)cnum(G,i,j,n,INK)}
+  for(let n=1;n<Math.min(cf,36);n++){const a=invR(n),b=invR(n+1),jump=(a[0]+a[1])!==(b[0]+b[1]);ctx.strokeStyle=jump?'rgba(100,116,139,.45)':BLUE;ctx.lineWidth=(jump?1.5:3)*K;ctx.setLineDash(jump?[5,4]:[]);ctx.beginPath();ctx.moveTo(G.X(a[1]),G.Y(a[0]));ctx.lineTo(G.X(b[1]),G.Y(b[0]));ctx.stroke();ctx.setLineDash([])}
+  let cur=null;if(cf>=1&&cf<=36){cur=invR(cf);ctx.strokeStyle=RED;ctx.lineWidth=4*K;rr(G.x0+(cur[1]-1)*G.c+2,G.y0+(cur[0]-1)*G.c+2,G.c-4,G.c-4,5*K);ctx.stroke()}
+  const px=W*.55,pw=W*.42;card(px,H*.2,pw,H*.3);fnt(15,true);ctx.fillStyle=INK;
+  if(cur){const d=cur[0]+cur[1]-1;txt('гість: корабель i = '+cur[0]+', місце j = '+cur[1],px+pw/2,H*.2+34*K);txt('діагональ d = i + j − 1 = '+d,px+pw/2,H*.2+66*K);txt('кімната = d(d − 1)/2 + j = '+(d*(d-1)/2)+' + '+cur[1],px+pw/2,H*.2+98*K);fnt(22,true);ctx.fillStyle=RED;txt('= '+cf,px+pw/2,H*.2+138*K)}
+  else if(c>36){txt('будь-яка клітина має номер, напр.',px+pw/2,H*.2+40*K);fnt(20,true);ctx.fillStyle=RED;txt('(8; 8) → кімната '+Rn(8,8),px+pw/2,H*.2+84*K);fnt(14);ctx.fillStyle='#4a3f2e';txt('і навпаки: з кімнати відновлюємо (i; j)',px+pw/2,H*.2+120*K)}
+  else{txt('рухаємося діагоналями: i + j = const',px+pw/2,H*.2+60*K)}
+  note(px,H*.54,pw,H*.12,GRN,'кожна клітина отримує номер: ℵ₀ · ℵ₀ = ℵ₀',40,eo(stag(st,18,.5)));
+  chip('інакше: кімната = 2^i · (2j + 1)',px+pw/2,H*.72,eo(stag(st,21,.5)),'#475569')}
+function scPow(w,h,st,gt){sceneTitle('Степінь: галактика, флот, корабель, місце',st);
+  const bw=W*.12,bh=H*.09,box=(x,y,v,l,col,al)=>{ctx.globalAlpha=al;ctx.fillStyle='#fff';rr(x-bw/2,y-bh/2,bw,bh,12*K);ctx.fill();ctx.strokeStyle=col;ctx.lineWidth=3*K;ctx.stroke();fnt(26,true);ctx.fillStyle=col;txt(v,x,y+9*K);fnt(12);ctx.fillStyle='#64748b';txt(l,x,y-bh/2-7*K);ctx.globalAlpha=1};
+  const top=[[.11,2,'галактика'],[.27,3,'флот'],[.43,1,'корабель'],[.59,2,'місце']],ys=[H*.26,H*.42,H*.56,H*.7];
+  top.forEach((q,i)=>box(W*q[0],ys[0],q[1],q[2],INK,eo(stag(st,.5+i*.3,.4))));
+  const lv=[[.19,9,'R(2; 3)',4,[0,1]],[.31,37,'R(9; 1)',9,[2]],[.45,705,'R(37; 2)',14,[3]]],ln=(x1,y1,x2,y2,u)=>{ctx.strokeStyle='#94a3b8';ctx.lineWidth=2*K;ctx.beginPath();ctx.moveTo(x1,y1+bh/2);ctx.lineTo(lerp(x1,x2,u),lerp(y1+bh/2,y2-bh/2,u));ctx.stroke()};
+  let prev=[W*.19,ys[1]];
+  lv.forEach((l,k)=>{const u=eo(stag(st,l[3],1)),x=W*l[0],y=ys[k+1];if(u<=0)return;
+    if(k===0){ln(W*.11,ys[0],x,y,u);ln(W*.27,ys[0],x,y,u)}else{const px=W*lv[k-1][0];ln(px,ys[k],x,y,u);ln(W*top[k+1][0],ys[0],x,y,u)}
+    if(u>.7)box(x,y,l[1],l[2],k===2?RED:BLUE,eo((u-.7)/.3))});
+  [[4,'R(2; 3) = (2+3−1)(2+3−2)/2 + 3 = 9',BLUE],[9,'R(9; 1) = 9·8/2 + 1 = 37',BLUE],[14,'R(37; 2) = 38·37/2 + 2 = 705',RED]].forEach((f,i)=>{const a=eo(stag(st,f[0],.5));if(a>0){popWrap(W*.83,H*(.3+i*.12),a,()=>{card(W*.67,H*(.25+i*.12),W*.3,H*.1);fnt(14,true);ctx.fillStyle=f[2];txt(f[1],W*.82,H*(.25+i*.12)+H*.06)})}});
+  if(st>16)stamp('кімната 705',W*.2,H*.7,24,RED,st,16,-.03);
+  chip('склеюємо індекси попарно: ℕᵏ ≈ ℕ для кожного скінченного k',W*.5,H*.13,eo(stag(st,1,.5)),'#475569');
+  note(W*.67,H*.62,W*.3,H*.12,RED,'нескінченний степінь ℕ^ℕ — вже не вміститься',32,eo(stag(st,19,.5)))}
+
+/* --- частина 2 --- */
+const F=[[1,0,1,0,0,1,0,1],[0,0,0,0,0,0,0,0],[1,1,0,1,1,0,1,1],[0,1,0,1,0,1,0,1],[1,0,1,1,0,0,1,0],[0,0,1,1,0,1,1,0],[1,1,0,0,1,0,0,1],[0,1,1,0,0,1,0,0]];
+const DD=F.map((r,n)=>1-r[n]);
+const DG=[[3,1,4,1,5,9,2,6],[7,1,8,2,8,1,8,2],[4,1,4,2,1,3,5,6],[5,0,0,0,0,0,0,0],[6,4,3,2,5,9,8,7],[1,2,3,4,5,6,7,8],[9,8,7,6,5,4,3,2],[2,7,1,8,2,8,1,8]];
+const DX=DG.map((r,n)=>r[n]===5?4:5);
+function scBij(w,h,st,gt){sceneTitle('Бієкція — це «порівну»',st);
+  const rowsY=[[H*.27,H*.41],[H*.55,H*.69]],nx=k=>W*.06+k*W*.065,Z=[0,1,-1,2,-2,3,-3,4];
+  const cap=(s,x,y)=>{fnt(14,true);ctx.fillStyle=BLUE;txt(s,x,y,'left')};
+  cap('ℕ → парні:  n ↦ 2n',W*.06,rowsY[0][0]-26*K);cap('ℕ → ℤ:  1, 2, 3, 4, 5, … ↦ 0, 1, −1, 2, −2, …',W*.06,rowsY[1][0]-26*K);
+  [[0,i=>2*i],[1,i=>Z[i-1]]].forEach(rw=>{const t0=rw[0]?9:2;for(let k=1;k<=8;k++){const a=eo(stag(st,t0+k*.35,.4)),y1=rowsY[rw[0]][0],y2=rowsY[rw[0]][1];
+    [[y1,k],[y2,rw[1](k)]].forEach(p=>{ctx.globalAlpha=Math.max(a,.25);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(nx(k),p[0],14*K,0,TAU);ctx.fill();ctx.strokeStyle=rw[0]?VIO:BLUE;ctx.lineWidth=2*K;ctx.stroke();fnt(12,true);ctx.fillStyle=INK;txt(p[1],nx(k),p[0]+4*K);ctx.globalAlpha=1});
+    if(a>0){ctx.strokeStyle=rw[0]?VIO:BLUE;ctx.lineWidth=2*K;ctx.globalAlpha=a;ctx.beginPath();ctx.moveTo(nx(k),y1+14*K);ctx.lineTo(nx(k),lerp(y1+14*K,y2-14*K,a));ctx.stroke();ctx.globalAlpha=1}}});
+  fnt(20);ctx.fillStyle='#64748b';txt('…',nx(9),rowsY[0][0]+6*K);txt('…',nx(9),rowsY[0][1]+6*K);txt('…',nx(9),rowsY[1][0]+6*K);txt('…',nx(9),rowsY[1][1]+6*K);
+  note(W*.66,H*.17,W*.31,H*.22,BLUE,'A і B рівнопотужні, якщо між ними є бієкція: кожному елементу A — рівно один елемент B і навпаки',30,eo(stag(st,1,.5)));
+  note(W*.66,H*.42,W*.31,H*.14,AMB,'частина «дорівнює» цілому — для нескінченних множин це нормально (Галілей)',30,eo(stag(st,13,.5)));
+  note(W*.66,H*.59,W*.31,H*.14,GRN,'ℚ теж зліченне: зигзаг із попередніх сцен, повтори викреслюємо',30,eo(stag(st,17,.5)));
+  if(st>20)stamp('усе це ℵ₀',W*.35,H*.8-0,24,GRN,st,20,-.03)}
+function bitRow(x,y,str,al,cs){cs=cs||24;for(let i=0;i<str.length;i++){ctx.globalAlpha=al;ctx.fillStyle=str[i]==='1'?AMB:'#e2e8f0';rr(x+i*(cs+3)*K,y,cs*K,cs*K,4*K);ctx.fill();fnt(Math.round(cs*.55),true);ctx.fillStyle=str[i]==='1'?'#fff':'#94a3b8';txt(str[i],x+i*(cs+3)*K+cs*K/2,y+cs*K*.68)}ctx.globalAlpha=1}
+function scParty(w,h,st,gt){spaceBg(gt);sceneTitle('Булеан: усі компанії гостей',st);
+  const L='ABC';
+  if(st<16){chip('кожна компанія — набір гостей (навіть порожній). Код: 1 — гість у складі, 0 — ні',W*.5,H*.12,eo(stag(st,.5,.5)),'#475569');
+    if(st>.8){['A','B','C'].forEach((l,i)=>{ctx.globalAlpha=eo(stag(st,.8,.5));fnt(15,true);ctx.fillStyle=gcol(i*9+3,45);if(i===0){fnt(13,true);ctx.fillStyle='#64748b';txt('гості:',W*.31,H*.2,'right');fnt(15,true);ctx.fillStyle=gcol(i*9+3,45)}txt(l,W*.34+(i*30+13.5)*K,H*.2);ctx.globalAlpha=1})}
+    for(let i=0;i<8;i++){const p=eob(stag(st,1.5+i*.7,.4));if(p<=0)continue;const y=H*(.23+i*.075),b=i.toString(2).padStart(3,'0'),nm=i?'{'+[...b].map((c,j)=>c==='1'?L[j]:'').filter(Boolean).join(', ')+'}':'∅  (ніхто)';
+      ctx.globalAlpha=p;fnt(19,true);ctx.fillStyle=INK;txt(nm,W*.1,y+18*K,'left');ctx.globalAlpha=1;bitRow(W*.34,y,b,p,27)}
+    chip('3 гості → 2³ = 8 компаній',W*.78,H*.55,eo(stag(st,9,.5)),'#1e40af');
+    if(st>10)note(W*.6,H*.26,W*.36,H*.22,VIO,'Булеан P(A) — множина всіх підмножин множини A. Для трьох гостей у ньому 8 елементів',34,eo(stag(st,10,.5)))}
+  else{const q=st-16;chip('гостей нескінченно багато: гість 1, 2, 3, …',W*.5,H*.12,eo(stag(q,.2,.5)),'#475569');
+    for(let k=0;k<16;k++){const a=eo(stag(q,.5,.5));if(a>0){ctx.globalAlpha=a;fnt(11,true);ctx.fillStyle='#64748b';txt(k+1,W*.3+(k*25+12)*K,H*.2);ctx.globalAlpha=1}}
+    [['нікого','0000000000000000'],['усі','1111111111111111'],['парні','0101010101010101'],['прості','0110101000101000'],['перші троє','1110000000000000']].forEach((r,i)=>{const p=eob(stag(q,1.2+i*1.3,.4));if(p<=0)return;const y=H*(.24+i*.095);ctx.globalAlpha=p;fnt(17,true);ctx.fillStyle=INK;txt(r[0],W*.04,y+16*K,'left');ctx.globalAlpha=1;bitRow(W*.3,y,r[1],p,22);ctx.globalAlpha=p;fnt(20,true);ctx.fillStyle=INK;txt('…',W*.3+16*25*K+10*K,y+18*K,'left');ctx.globalAlpha=1});
+    note(W*.72,H*.22,W*.25,H*.22,BLUE,'на місці n — 1, якщо гість n у компанії, і 0, якщо ні',22,eo(stag(q,1,.5)));
+    note(W*.72,H*.47,W*.25,H*.2,VIO,'булеан нескінченної множини — усі такі нескінченні рядки',22,eo(stag(q,8,.5)));
+    chip('а чи вистачить кімнат на всі коди?',W*.5,H*.76,eo(stag(q,12,.5)),RED);}}
+function scDiag(w,h,st,gt){spaceBg(gt);sceneTitle('Діагональний аргумент',st);
+  const c=H*.055,x0=W*.2,y0=H*.24,cx=m=>x0+m*c,ry=n=>y0+n*c+(n>=8?10*K:0);
+  porter(W*.07,H*.4,.8*K,gt,.5);
+  fnt(12,true);ctx.fillStyle='#64748b';for(let m=0;m<8;m++)txt(m+1,cx(m)+c/2,y0-8*K);fnt(11);txt('гість m →',x0+c*2,y0-26*K);
+  for(let n=0;n<8;n++){const a=eo(stag(st,1+n*.35,.4));if(a<=0)continue;ctx.globalAlpha=a;fnt(13,true);ctx.fillStyle='#475569';txt('кімната '+(n+1),x0-8*K,ry(n)+c*.65,'right');
+    for(let m=0;m<8;m++){ctx.fillStyle=F[n][m]?'#bbf7d0':'#f1f5f9';rr(cx(m)+2,ry(n)+2,c-4,c-4,5*K);ctx.fill();ctx.strokeStyle='#cbd5e1';ctx.stroke();fnt(15,true);ctx.fillStyle=F[n][m]?GRN:'#94a3b8';txt(F[n][m],cx(m)+c/2,ry(n)+c*.65)}ctx.globalAlpha=1}
+  for(let n=0;n<8;n++){const a=eo(stag(st,6+n*.7,.4));if(a>0){ctx.globalAlpha=a;ctx.strokeStyle=GOLD;ctx.lineWidth=4*K;rr(cx(n)+2,ry(n)+2,c-4,c-4,5*K);ctx.stroke();ctx.globalAlpha=1}}
+  for(let n=0;n<8;n++){const a=eo(stag(st,12+n*.8,.5));if(a<=0)continue;ctx.globalAlpha=a;fnt(13,true);if(n===0){ctx.fillStyle=RED;txt('компанія D',x0-8*K,ry(8)+c*.65,'right')}
+    ctx.fillStyle=DD[n]?'#fecaca':'#f1f5f9';rr(cx(n)+2,ry(8)+2,c-4,c-4,5*K);ctx.fill();ctx.strokeStyle=RED;ctx.lineWidth=2;ctx.stroke();fnt(15,true);ctx.fillStyle=RED;txt(DD[n],cx(n)+c/2,ry(8)+c*.65);ctx.globalAlpha=1}
+  for(let n=0;n<8;n++){const a=eo(stag(st,20+n*.55,.4));if(a>0){ctx.globalAlpha=a;ctx.strokeStyle='rgba(239,68,68,.35)';ctx.lineWidth=1.5*K;ctx.setLineDash([4,3]);ctx.beginPath();ctx.moveTo(cx(n)+c-6*K,ry(n)+c-2);ctx.lineTo(cx(n)+c-6*K,ry(8)+2);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1}}
+  const X=W*.55,CW=W*.42,HH=H*.135;
+  note(X,H*.16,CW,HH,'#475569','рядок n — код компанії з кімнати n: 1, якщо гість m у її складі',44,eo(stag(st,1,.5)));
+  note(X,H*.31,CW,HH,AMB,'діагональ: чи сидить гість n на вечірці у власній кімнаті?',44,eo(stag(st,6,.5)));
+  note(X,H*.46,CW,HH,RED,'D: інвертуємо діагональ. D = {n : n ∉ f(n)}',44,eo(stag(st,12,.5)));
+  note(X,H*.61,CW,HH,VIO,'код D відрізняється від 1-го коду 1-м бітом, від 2-го — 2-м, і так далі',44,eo(stag(st,20,.5)));
+  if(st>27)stamp('D не збігається з жодним кодом: кімнати для D немає',W*.76,H*.775,16,RED,st,27,-.02)}
+function scThm(w,h,st,gt){sceneTitle('Теорема Кантора і драбина нескінченностей',st);
+  note(W*.04,H*.17,W*.42,H*.2,BLUE,'Булеан P(A) — множина всіх підмножин множини A — завжди більший за саму A: |A| < |P(A)|',38,eo(stag(st,1,.5)));
+  note(W*.04,H*.4,W*.42,H*.17,VIO,'«не менше»: a ↦ {a}; «не дорівнює»: діагональ — бієкції немає',38,eo(stag(st,5,.5)));
+  note(W*.04,H*.6,W*.42,H*.12,GRN,'для скінченних: n < 2ⁿ (3 → 8)',38,eo(stag(st,9,.5)));
+  const names=['ℵ₀','2^ℵ₀ = 𝔠','2^𝔠','…'],bx=W*.52,bw=W*.11,base=H*.76;
+  for(let k=0;k<4;k++){const a=eo(stag(st,3+k*3,.8)),hh=H*(.1+k*.1);if(a<=0)continue;ctx.globalAlpha=a;ctx.fillStyle=k===3?'#e5e7eb':'hsl('+(220-k*50)+',70%,80%)';rr(bx+k*bw*1.02,base-hh*a,bw*.98,hh*a,8*K);ctx.fill();ctx.strokeStyle='#64748b';ctx.stroke();fnt(14,true);ctx.fillStyle=INK;txt(names[k],bx+k*bw*1.02+bw/2,base-hh*a-10*K);
+    if(k>0){fnt(11,true);ctx.fillStyle=VIO;txt('P(·)',bx+k*bw*1.02,base-hh-30*K)}ctx.globalAlpha=1}
+  const kk=clamp((st-5)/3,0,3),gk=Math.floor(kk),gx=bx+gk*bw*1.02+bw/2,gy=base-H*(.1+gk*.1)-26*K-Math.abs(Math.sin(gt*5))*8*K;
+  if(st>5){ctx.fillStyle=GOLD;ctx.beginPath();ctx.arc(gx,gy,10*K,0,TAU);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke()}
+  if(st>14)chip('нескінченностей — нескінченно багато',W*.76,H*.2,eo(stag(st,14,.5)),AMB)}
+function scCont(w,h,st,gt){sceneTitle('Континуум: відрізок, пряма, компанії',st);
+  const cx=W*.55,r=H*.24,cy=H*.4,ly=cy+r,phi=Math.PI*(.5+.4*Math.sin((st-1)*.55)),pa=[cx+r*Math.cos(phi),cy+r*Math.sin(phi)],px=Math.max(W*.04,Math.min(W*.96,cx+r*Math.cos(phi)/Math.sin(phi)));
+  ctx.strokeStyle='#94a3b8';ctx.lineWidth=3*K;ctx.beginPath();ctx.moveTo(W*.04,ly);ctx.lineTo(W*.96,ly);ctx.stroke();
+  ctx.strokeStyle=BLUE;ctx.lineWidth=5*K;ctx.beginPath();ctx.arc(cx,cy,r,.06,Math.PI-.06);ctx.stroke();
+  ctx.strokeStyle=CYAN;ctx.lineWidth=2*K;ctx.setLineDash([6*K,5*K]);ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(px,ly);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#64748b';ctx.beginPath();ctx.arc(cx,cy,4*K,0,TAU);ctx.fill();dot(pa[0],pa[1],AMB,8);dot(px,ly,RED,8);
+  chip('відрізок (0, 1), зігнутий у півколо',W*.3,H*.58,eo(stag(st,1,.4)),'#1e40af');chip('уся пряма ℝ',W*.55,ly+34*K,eo(stag(st,1.5,.4)),'#1e40af');
+  const p=eo(stag(st,11,.5));if(p>0){ctx.globalAlpha=p;fnt(16,true);ctx.fillStyle=INK;txt('x = 0,10110100… (двійковий запис)',W*.03,H*.2,'left');ctx.globalAlpha=1;bitRow(W*.03,H*.24,'10110100',p,26);ctx.globalAlpha=p;fnt(16,true);ctx.fillStyle=INK;txt('= компанія {1, 3, 4, 6, …}',W*.03,H*.36,'left');ctx.globalAlpha=1}
+  chip('точок стільки ж, скільки компаній: 2^ℵ₀ = 𝔠',W*.76,H*.16,eo(stag(st,16,.4)),GRN);chip('(0, 1) ↔ ℝ — бієкція',W*.8,H*.24,eo(stag(st,19,.4)),'#b45309');
+  chip('точок на прямій стільки ж, скільки на відрізку',W*.5,H*.8,eo(stag(st,23,.5)),VIO);
+  if(st>27)chip('«майже»: 0,0111… = 0,1000… — таких чисел лише зліченно багато',W*.5,H*.88,eo(stag(st,27,.5)),'#475569')}
+function scZip(w,h,st,gt){sceneTitle('Площина і застібка Кантора',st);
+  const a=1-eo(stag(st,9,.5));
+  if(a>0){const cw=W*.32,ch=H*.5,cy=H*.46;ctx.globalAlpha=a;
+    [[W*.27,'ℕ × ℕ — зигзаг працює ✓',GRN],[W*.73,'ℝ × ℝ — першої точки немає ✗',RED]].forEach((q,i)=>{const cx=q[0];ctx.fillStyle='rgba(255,255,255,.92)';rr(cx-cw/2,cy-ch/2,cw,ch,12*K);ctx.fill();ctx.strokeStyle=q[2];ctx.lineWidth=3*K;ctx.stroke();fnt(15,true);ctx.fillStyle=q[2];txt(q[1],cx,cy-ch/2+24*K);
+      if(!i){for(let b=0;b<5;b++)for(let c=0;c<5;c++){ctx.fillStyle=BLUE;ctx.beginPath();ctx.arc(cx-cw*.3+c*cw*.15,cy-ch*.2+b*ch*.14,4*K,0,TAU);ctx.fill()}}
+      else{const g=ctx.createLinearGradient(cx-cw*.35,0,cx+cw*.35,0);g.addColorStop(0,'#bfdbfe');g.addColorStop(1,'#fde68a');ctx.fillStyle=g;ctx.fillRect(cx-cw*.35,cy-ch*.2,cw*.7,ch*.5);fnt(28,true);ctx.fillStyle=INK;txt('?',cx,cy+ch*.08)}});ctx.globalAlpha=1}
+  const A='31415926',B='27182818',Z=[];for(let i=0;i<8;i++){Z.push(A[i]);Z.push(B[i])}
+  const ds=W*.055,dz=W*.0275,xs=W*.2,b=eo(stag(st,9.5,.5)),ry=[H*.28,H*.4,H*.6];
+  if(b>0){ctx.globalAlpha=b;fnt(20,true);ctx.fillStyle=BLUE;txt('x =',W*.1,ry[0]);ctx.fillStyle=AMB;txt('y =',W*.1,ry[1]);ctx.fillStyle=INK;txt('z =',W*.1,ry[2]);ctx.globalAlpha=1;
+    fnt(22,true);for(let i=0;i<8;i++){ctx.fillStyle=BLUE;txt(A[i],xs+i*ds,ry[0]);ctx.fillStyle=AMB;txt(B[i],xs+i*ds,ry[1])}
+    fnt(22,true);ctx.fillStyle=INK;txt('0,',xs-W*.03,ry[2]);
+    let last=-1;Z.forEach((c,i)=>{const tt=eob(stag(st,12+i*.6,.35));if(tt<=0)return;last=i;const si=i>>1,sx=xs+si*ds,sy=i%2?ry[1]:ry[0],dx=xs+i*dz;ctx.globalAlpha=tt;ctx.strokeStyle=i%2?AMB:BLUE;ctx.lineWidth=1.5*K;ctx.beginPath();ctx.moveTo(sx-(i%2?0:22*K),sy+14*K);ctx.lineTo(dx,ry[2]-26*K);ctx.stroke();
+      ctx.fillStyle=i%2?'#fde68a':'#bfdbfe';rr(dx-dz*.46,ry[2]-20*K+(i%2?6*K:-6*K),dz*.92,28*K,5*K);ctx.fill();ctx.strokeStyle=i%2?AMB:BLUE;ctx.lineWidth=2;ctx.stroke();fnt(20,true);ctx.fillStyle=INK;txt(c,dx,ry[2]+(i%2?10*K:-2*K));ctx.globalAlpha=1});
+    if(last>=0&&last<15){const sx=xs+last*dz+dz*.5;ctx.fillStyle='#64748b';rr(sx-12*K,ry[2]-50*K,24*K,22*K,5*K);ctx.fill();ctx.strokeStyle='#64748b';ctx.lineWidth=3*K;ctx.beginPath();ctx.arc(sx,ry[2]-64*K,8*K,0,TAU);ctx.stroke()}}
+  if(st>20)chip('точка площини (x; y) ↦ точка прямої z',W*.5,H*.76,eo(stag(st,20,.5)),'#1e40af');
+  if(st>23)chip('комплексне число x + iy ↦ дійсне число z',W*.5,H*.83,eo(stag(st,23,.5)),VIO);
+  if(st>27)chip('Кантор — Дедекінду, 1877: «Бачу, але не вірю»',W*.5,H*.9,eo(stag(st,27,.5)),'#475569');
+  if(st>31)chip('скінченні дроби: пастка, яку закриває теорема Кантора — Бернштейна',W*.5,H*.3,eo(stag(st,31,.5)),AMB)}
+function scCH(w,h,st,gt){sceneTitle('Гіпотеза континууму',st);
+  const lx=W*.18,rx=W*.82,ly=H*.3;ctx.strokeStyle='#94a3b8';ctx.lineWidth=4*K;ctx.beginPath();ctx.moveTo(lx,ly);ctx.lineTo(rx,ly);ctx.stroke();
+  [[lx,'ℵ₀','зліченна'],[rx,'𝔠 = 2^ℵ₀','континуум']].forEach(p=>{dot(p[0],ly,GRN,10);fnt(20,true);ctx.fillStyle=INK;txt(p[1],p[0],ly-24*K);fnt(13);ctx.fillStyle='#64748b';txt(p[2],p[0],ly+30*K)});
+  for(let k=0;k<5;k++){const a=eo(stag(st,2+k*.4,.5)),x=lerp(lx,rx,(k+1)/6),y=ly-8*K+Math.sin(gt*2+k)*8*K;if(a>0){ctx.globalAlpha=a;fnt(26,true);ctx.fillStyle=AMB;txt('?',x,y);ctx.globalAlpha=1}}
+  chip('чи є потужність строго між ℵ₀ і 𝔠?',W*.5,H*.42,eo(stag(st,3,.5)),AMB);
+  [['1878','Кантор','висунув гіпотезу континууму'],['1900','Гільберт','перша проблема зі списку'],['1940','Гедель','не спростовна в ZFC'],['1963','Коен','не доводиться в ZFC']].forEach((c,i)=>{const cw=W*.22,x=W*(.03+i*.243),y=H*.5,ch=H*.26,p=eo(stag(st,6+i*3.2,.6));popWrap(x+cw/2,y+ch/2,p,()=>{card(x,y,cw,ch);fnt(30,true);ctx.fillStyle=RED;txt(c[0],x+cw/2,y+44*K);fnt(18,true);ctx.fillStyle=INK;txt(c[1],x+cw/2,y+76*K);fnt(14);ctx.fillStyle='#4a3f2e';wrap(c[2],x+cw/2,y+106*K,22,20)})});
+  chip('відповідь залежить від вибору аксіом (якщо ZFC несуперечлива)',W*.5,H*.82,eo(stag(st,19,.5)),'#475569')}
+function icR(i,x,y,gt){ctx.save();ctx.translate(x,y);
+  if(i===0){for(let k=0;k<3;k++){const r=(26+k*18)*K+Math.sin(gt*2+k)*2*K;ctx.strokeStyle=['#7c3aed','#2563eb','#16a34a'][k];ctx.lineWidth=3*K;ctx.beginPath();ctx.ellipse(0,0,r*1.3,r*.8,0,0,TAU);ctx.stroke()}fnt(14,true);ctx.fillStyle=INK;txt('V',0,5*K)}
+  if(i===1){ctx.fillStyle=BLUE;rr(-50*K,10*K,30*K,30*K,4*K);ctx.fill();ctx.fillStyle=RED;rr(10*K,-40*K,30*K,80*K,4*K);ctx.fill();fnt(12,true);ctx.fillStyle=INK;txt('ℵ₀',-35*K,56*K);txt('𝔠',25*K,56*K)}
+  if(i===2){ctx.strokeStyle='#cbd5e1';ctx.lineWidth=6*K;ctx.beginPath();ctx.moveTo(-60*K,0);ctx.lineTo(60*K,0);ctx.stroke();for(let k=0;k<9;k++){const x=-56*K+k*14*K;ctx.fillStyle=BLUE;ctx.beginPath();ctx.arc(x,0,4*K,0,TAU);ctx.fill()}const p=((gt*.2)%1)*112*K-56*K;ctx.fillStyle=RED;ctx.beginPath();ctx.arc(p,0,6*K,0,TAU);ctx.fill();fnt(12,true);ctx.fillStyle=INK;txt('майже всі — червоні',0,34*K)}
+  if(i===3){ctx.strokeStyle='#cbd5e1';ctx.lineWidth=6*K;ctx.beginPath();ctx.moveTo(-60*K,0);ctx.lineTo(60*K,0);ctx.stroke();const p=((gt*.25)%1)*120*K-60*K;ctx.fillStyle=GRN;ctx.beginPath();ctx.arc(p,0,6*K,0,TAU);ctx.fill();ctx.strokeStyle=GRN;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(p,0,12*K+Math.sin(gt*4)*3*K,0,TAU);ctx.stroke();fnt(12,true);ctx.fillStyle=INK;txt('довжина ℚ = 0',0,34*K)}ctx.restore()}
+function scRel(w,h,st,gt){sceneTitle('Суміжне й прикладне',st);
+  [['Парадокс Рассела','множини всіх множин немає: P(V) більша за V, але P(V) ⊆ V'],['Невичислювані функції','програм ℵ₀, функцій ℕ→ℕ — 𝔠; діагональ Тюрінга — проблема зупинки'],['Трансцендентні числа','алгебраїчних лише ℵ₀, тож майже всі числа трансцендентні (Кантор)'],['Теорія міри','зліченна множина має міру 0: навмання число майже напевно ірраціональне']].forEach((c,i)=>{
+    const cw=W*.22,x=W*(.03+i*.243),y=H*.18,ch=H*.55,p=eo(stag(st,1+i*4,.6));popWrap(x+cw/2,y+ch/2,p,()=>{card(x,y,cw,ch);icR(i,x+cw/2,y+H*.1,gt);fnt(17,true);ctx.fillStyle=BLUE;wrap(c[0],x+cw/2,y+H*.22,18,20);fnt(14);ctx.fillStyle='#4a3f2e';wrap(c[1],x+cw/2,y+H*.3,22,20)})})}
+function scEnd(w,h,st,gt){sceneTitle('Підсумок',st);
+  [['1','Порівнювати нескінченні множини можна: бієкція означає «порівну»'],['2','Булеан завжди більший за множину: |A| < |P(A)|, нескінченностей нескінченно багато'],['3','Точок на відрізку, прямій і площині порівну: 𝔠 = 2^ℵ₀']].forEach((c,i)=>{const y=H*(.2+i*.17),p=eo(stag(st,.8+i*2,.6));popWrap(W*.5,y+H*.06,p,()=>{card(W*.1,y,W*.8,H*.13);ctx.fillStyle=RED;ctx.beginPath();ctx.arc(W*.15,y+H*.065,20*K,0,TAU);ctx.fill();fnt(20,true);ctx.fillStyle='#fff';txt(c[0],W*.15,y+H*.065+7*K);fnt(16,true);ctx.fillStyle=INK;txt(c[1],W*.53,y+H*.065+6*K)})});
+  stamp('У готелі нескінченності є місце для всіх гостей, але не для всіх компаній',W*.5,H*.8,18,RED,st,6.5,-.02);confetti(W*.5,H*.8,st,6.5,50)}
+const scenes=[
+ {tick:'Готель',dur:30,draw:scHook,text:`Цілих чисел більше, ніж парних? А точок на прямій більше, ніж на відрізку, а на площині ще більше? А може, нескінченні множини взагалі некоректно порівнювати? Якщо ваші відповіді «так», вам у готель «Нескінченність». У нескінченному космосі є готель. У ньому нескінченно багато номерів, і всі вони зайняті.`},
+ {tick:'Один гість',dur:20,draw:scOne,text:`Приїжджає ще один гість. Портьє не губиться: усіх просить перейти в сусідній номер, на один далі. Гість з першої кімнати йде в другу, з другої в третю, і так далі. Оскільки кімнат нескінченно багато, нікому не бракує номера, а перша кімната вільна.`},
+ {tick:'Корабель',dur:24,draw:scTwo,text:`Тепер на орбіту прилітає космічний корабель із нескінченною кількістю пасажирів. Портьє просить кожного гостя перейти в номер удвічі більший: з n в 2n. Усі непарні кімнати звільняються, і пасажир із номером j отримує кімнату 2j мінус один. Нескінченність плюс нескінченність знову нескінченність.`},
+ {tick:'Кораблі',dur:22,draw:scTable,text:`А якщо прилетить нескінченно багато кораблів, і на кожному нескінченно багато пасажирів? Запишемо їх таблицею: рядок для корабля, стовпчик для місця. Спробуємо селити по рядках. Перший корабель займає номери один, два, три, і так до нескінченності, а до другого корабля ми не дійдемо ніколи. Потрібна нумерація, що досягає кожної клітини за скінченну кількість кроків.`},
+ {tick:'Зигзаг',dur:28,draw:scZig,text:`Нумеруватимемо діагоналями. Перша діагональ має одну клітину, друга дві, третя три, і так далі. Тепер кожна клітина досягається за скінченну кількість кроків. Для корабля i і місця j кімната дорівнює d помножити на d мінус один пополам плюс j, де d дорівнює i плюс j мінус один. Нескінченність разів нескінченність знову нескінченність.`},
+ {tick:'Степінь',dur:22,draw:scPow,text:`А якщо у гостя не два індекси, а чотири: галактика, флот, корабель, місце? Склеюємо їх попарно тією самою формулою. Галактика два, флот три дає дев’ять. Дев’ять і корабель один дає тридцять сім. Тридцять сім і місце два дають кімнату сімсот п’ять. Так будь-який скінченний декартовий сепінь множини натуральних чисел зліченний. Нескінченний степінь уже ні.`},
+ {tick:'Бієкція',dur:24,draw:scBij,text:`Що ми насправді робили? Будували бієкції: кожному гостеві рівно одна кімната, і навпаки. Це і є означення «порівну» для нескінченних множин. Отже, на перше запитання відповідь така: цілих чисел стільки ж, скільки парних. Натуральні, цілі і навіть раціональні числа мають потужність алеф-нуль, найменшу нескінченність.`},
+ {tick:'Булеан',dur:32,draw:scParty,text:`Але готель ламається. Гості просять для кожної можливої компанії окрему кімнату для вечірки. Компанія це будь-яка множина гостей, навіть порожня. Множину всіх компаній називають булеаном. Запишемо компанію рядком нулів та одиниць: на місці n одиниця, якщо гість n у складі, і нуль, якщо ні. Для трьох гостей компаній вісім. А для нескінченно багатьох гостей коди нескінченні. Чи вистачить кімнат на всі коди?`},
+ {tick:'Діагональ',dur:34,draw:scDiag,text:`Нехай портьє якось розподілив усі компанії по кімнатах. Запишемо їхні коди рядками. Подивимось на діагональ: чи сидить гість n на вечірці у власній кімнаті? Складемо компанію D: візьмемо тих гостей, кого на діагоналі немає, і закреслимо тих, хто є. Її код відрізняється від першого коду першим бітом, від другого другим, і так далі. Отже, жодна кімната їй не підходить. Будь-яка спроба розподілу залишає компанію без кімнати.`},
+ {tick:'Теорема',dur:22,draw:scThm,text:`Це теорема Кантора: булеан множини, тобто множина всіх її підмножин, завжди більший за неї саму. Менше не може бути, бо кожен елемент породжує одноелементну підмножину. А рівно також не може, бо діагональ показує, що бієкції немає. Звідси драбина: алеф-нуль менше за два в степені алеф-нуль, воно менше за два в степені два в степені алеф-нуль, і так без кінця.`},
+ {tick:'Континуум',dur:34,draw:scCont,text:`Скільки ж компаній? Беремо відрізок від нуля до одиниці. Кожну його точку можна записати у двійковому вигляді, а це якраз код компанії. Тож точок стільки ж, скільки компаній: два в степені алеф-нуль, це число називають континуумом. А сам відрізок бієктивно перетворюється на всю пряму: зігніть його в півколо й проєктуйте з центру. Отже, на прямій точок стільки ж, скільки на відрізку.`},
+ {tick:'Застібка',dur:36,draw:scZip,text:`А на площині точок більше? Зигзаг працює для решітки, але в неперервної площини немає першої точки. Кантор придумав застібку: беремо точку площини з координатами, які є парою дійсних чисел x та y, і змішуємо їхні цифри в шаховому порядку. Одна точка прямої кодує цілу точку площини. Кантор писав Дедекінду: бачу, але не вірю. Отже, на площині стільки ж точок, скільки на прямій.`},
+ {tick:'Континуум-гіпотеза',dur:24,draw:scCH,text:`Чи є між алеф-нуль і континуумом ще якась потужність? Кантор висунув гіпотезу континууму 1878 року. Гільберт поставив її першою у своєму списку проблем. Гедель показав, що в системі аксіом теорії множин ZFC гіпотезу не спростувати, а Коен, що не можливо довести. Відповідь залежить від вибору аксіом.`},
+ {tick:'Суміжне',dur:24,draw:scRel,text:`Діагональний метод скрізь. Парадокс Рассела: множини всіх множин не існує. Програм зліченна кількість, а функцій континуум, тож невичислювані функції існують, і це ідея проблеми зупинки. Алгебраїчних чисел зліченно, тому майже всі числа трансцендентні. А зліченна множина має "міру" - по суті довжину - нуль.`},
+ {tick:'Підсумок',dur:22,draw:scEnd,text:`Підсумуємо. Порівнювати нескінченні множини можна: бієкція означає «порівну», тому цілих і парних стільки ж. Булеан завжди більший за множину, тож нескінченностей нескінченно багато. А точок на відрізку, на прямій і на площині порівну: два в степені алеф-нуль. У готелі нескінченності є місце для всіх гостей, але не для всіх компаній.`}];
+/*STUDIO-VOICE-BEGIN*/
+/* озвучення диктора: mp3 за назвою сцени; без файлу працює попередній синтез */
+const VOICE=[{"tick":"Готель","file":"infinite-sets-hotel.mp3?v=mvl809bw","dur":22.9},{"tick":"Один гість","file":"infinite-sets-odyn-hist.mp3?v=mvl81c7s","dur":16.71},{"tick":"Корабель","file":"infinite-sets-korabel.mp3?v=mvl82wn0","dur":19.47},{"tick":"Кораблі","file":"infinite-sets-korabli.mp3?v=mvl8473b","dur":25.65},{"tick":"Зигзаг","file":"infinite-sets-zyhzah.mp3?v=mvl8a78j","dur":24.53},{"tick":"Степінь","file":"infinite-sets-stepin.mp3?v=mvl8beq0","dur":23.11},{"tick":"Бієкція","file":"infinite-sets-biiektsiia.mp3?v=mvl8d2vm","dur":26.07},{"tick":"Булеан","file":"infinite-sets-bulean.mp3?v=mvl8f1o5","dur":37.01},{"tick":"Діагональ","file":"infinite-sets-diahonal.mp3?v=mvl8gg2j","dur":37.39},{"tick":"Теорема","file":"infinite-sets-teorema.mp3?v=mvl8hem2","dur":32.43},{"tick":"Континуум","file":"infinite-sets-kontynuum.mp3?v=mvl8ig21","dur":34.23},{"tick":"Застібка","file":"infinite-sets-zastibka.mp3?v=mvl8jyax","dur":40.93},{"tick":"Континуум-гіпотеза","file":"infinite-sets-kontynuum-hipoteza.mp3?v=mvl8lhwf","dur":26.57},{"tick":"Суміжне","file":"infinite-sets-sumizhne.mp3?v=mvl8mcgl","dur":27.03},{"tick":"Підсумок","file":"infinite-sets-pidsumok.mp3?v=mvl8n3v1","dur":26.23}];
+const VOICE_FAIL={};
+function voiceFor(i){const s=scenes[i];if(!s)return null;const e=VOICE[i];if(e&&e.tick===s.tick)return e;return VOICE.find(function(x){return x&&x.tick===s.tick})||null}
+scenes.forEach(function(s,i){const e=voiceFor(i);if(e&&e.dur&&e.dur+1>s.dur)s.dur=Math.ceil(e.dur+1)});
+function speak(text,sceneIdx){
+  const e=(engine!=='none'&&!VOICE_FAIL[sceneIdx])?voiceFor(sceneIdx):null;
+  if(!e)return speakSynth(text,sceneIdx);
+  voiceScene=sceneIdx;ttsDone=false;ttsActive=true;
+  const myTok=++gToken;
+  const fin=function(){if(myTok===gToken&&voiceScene===sceneIdx){ttsDone=true;ttsActive=false}};
+  const fail=function(){if(myTok!==gToken)return;VOICE_FAIL[sceneIdx]=1;speakSynth(text,sceneIdx)};
+  const off=voiceSeek?Math.max(0,sceneTime):0;
+  if(off>=e.dur-0.05){gAudio=null;fin();return}
+  const a=new Audio(e.file);gAudio=a;a.playbackRate=speed;
+  a.onended=fin;a.onerror=fail;
+  if(off>0){try{a.currentTime=off}catch(x){}a.addEventListener('loadedmetadata',function(){if(Math.abs(a.currentTime-off)>0.3)try{a.currentTime=off}catch(x){}},{once:true})}
+  const pl=a.play();
+  if(pl)pl.catch(function(err){if(myTok!==gToken)return;if(err&&err.name==='AbortError')return;if(err&&err.name==='NotAllowedError'){fin();return}fail()});
+}
+/* перемотка по шкалі: озвучка стає на ту саму позицію всередині сцени */
+let voiceSeek=false;
+const _seekTime=seekTime;
+seekTime=function(T){voiceSeek=true;try{_seekTime(T)}finally{voiceSeek=false}};
+const _doResume=doResume;
+doResume=function(){
+  const e=voiceFor(currentScene),need=!gAudio&&engine!=='none'&&e&&!VOICE_FAIL[currentScene]&&sceneTime<e.dur-0.05;
+  _doResume();
+  if(need){voiceSeek=true;try{speak(scenes[currentScene].text,currentScene)}finally{voiceSeek=false}}
+};
+/*STUDIO-VOICE-END*/
+const cum=[];let acc0=0;scenes.forEach(s=>{cum.push(acc0);acc0+=s.dur});
+const TOTAL=acc0;
+
+/* ================= TTS (гібрид) ================= */
+const synth=window.speechSynthesis;
+let engine='google',userPicked=false,gAudio=null,gToken=0;
+let voiceScene=-1,ttsDone=true,ttsActive=false;
+function detect(){if(userPicked)return;const vs=(synth&&synth.getVoices?synth.getVoices():[])||[];
+  const uk=vs.some(v=>v.lang&&v.lang.toLowerCase().startsWith('uk'));
+  updateEngineUI()}
+if(synth){detect();if(synth.onvoiceschanged!==undefined)synth.onvoiceschanged=detect}
+function updateEngineUI(){engineSeg.querySelectorAll('button').forEach(b=>
+  b.classList.toggle('on',b.dataset.e===engine))}
+function splitChunks(text,maxLen){const ss=text.match(/[^.!?]+[.!?]+/g)||[text];
+  const out=[];let cur='';ss.forEach(s=>{if((cur+s).length>maxLen&&cur){out.push(cur.trim());cur=s}else cur+=s});
+  if(cur)out.push(cur.trim());return out}
+function speakSynth(text,sceneIdx){voiceScene=sceneIdx;ttsDone=false;ttsActive=true;
+  const done=()=>{if(voiceScene===sceneIdx){ttsDone=true;ttsActive=false}};
+  if(engine==='none'){ttsDone=true;ttsActive=false;return}
+  if(engine==='webspeech'&&synth){try{synth.cancel()}catch(e){}
+    const u=new SpeechSynthesisUtterance(text);u.lang='uk-UA';
+    u.rate=clamp(0.95*speed,0.5,2);u.pitch=1;
+    u.onend=done;u.onerror=done;synth.speak(u);if(synth.paused)synth.resume()}
+  else if(engine==='hf'){const myTok=++gToken;hfWait=true;
+    (async()=>{
+      if(!await hfEnsure()){if(myTok===gToken)hfFallback(text,sceneIdx);return}
+      const ch=hfSplit(text,110),ps=ch.map(c=>hfSynth(c));ps.forEach(p=>p.catch(()=>{}));{const nx=scenes[sceneIdx+1];if(nx)hfSynth(hfSplit(nx.text,110)[0]).catch(()=>{})}
+      for(let i=0;i<ch.length;i++){let url;
+        if(i>0)hfWait=true;try{url=await ps[i]}catch(e){console.error('UA нейро:',e);if(myTok===gToken)hfFallback(text,sceneIdx);return}
+        if(myTok!==gToken)return;
+        hfWait=false;
+        await new Promise(res=>{const a=new Audio(url);a.playbackRate=speed;gAudio=a;
+          const txt=ch[i];a.addEventListener('loadedmetadata',()=>console.log('[UA нейро]',txt.length,'знаків →',a.duration.toFixed(1),'с:',txt));
+          a.onended=res;a.onerror=res;
+          const pl=a.play();if(pl)pl.catch(e=>{if(!(e&&e.name==='AbortError'))res()});
+          if(isPaused)a.pause()});
+        if(myTok!==gToken)return}
+      done()})().catch(e=>{console.error(e);hfWait=false;done()})}
+  else{const myTok=++gToken,ch=splitChunks(text,180);let i=0;
+    (function next(){if(myTok!==gToken)return;
+      if(i>=ch.length){done();return}
+      const a=new Audio('https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=uk&q='+encodeURIComponent(ch[i]));
+      gAudio=a;a.onended=()=>{i++;next()};a.onerror=()=>{i++;next()};
+      a.play().catch(()=>{i++;next()})})()}}
+/* ---- UA нейро: демо robinhad/ukrainian-tts на Hugging Face (відкат -> Google TTS) ---- */
+const HF_SPACE='robinhad/ukrainian-tts',HF_HOST='https://robinhad-ukrainian-tts.hf.space',
+  HF_CLIENT='https://cdn.jsdelivr.net/npm/@gradio/client@2.6.0/dist/index.min.js';
+const hfVoiceSel=document.getElementById('hfVoice');
+let hfApp=null,hfConn=null,hfMsg='',hfWait=false,hfQ=Promise.resolve(),hfApi='/predict';const hfCache=new Map();
+const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout '+ms)),ms))]);
+function hfEnsure(){if(hfConn)return hfConn;
+  hfConn=(async()=>{hfMsg='⏳';const m=await import(HF_CLIENT);
+    hfApp=await withTimeout(m.Client.connect(HF_SPACE),60000);hfMsg='';return true})()
+    .catch(e=>{console.error('UA нейро:',e);hfMsg='⚠ UA нейро недоступне → Google';hfConn=null;return false});
+  return hfConn}
+function hfSynth(t){const v=hfVoiceSel.value,k=v+'|'+t;if(hfCache.has(k))return hfCache.get(k);
+  hfQ.catch(()=>{});
+  const pr=(hfQ=hfQ.catch(()=>{}).then(async()=>{let last;
+    for(const n of [hfApi,'/tts']){const t0=Date.now();
+      try{const r=await withTimeout(hfApp.predict(n,[t,v]),90000);
+        const f=r&&r.data&&r.data[0];const u=f&&(f.url||(f.path&&HF_HOST+'/file='+f.path));
+        if(!u)throw new Error('немає аудіо у відповіді');hfApi=n;return u}
+      catch(e){last=e;if(Date.now()-t0>4000)break}}
+    throw last}));
+  hfCache.set(k,pr);pr.catch(()=>hfCache.delete(k));return pr}
+/* Ділимо лише за межами речень (. ! ? …): кома чи тире всередині речення не повинні ставати «крапкою».
+   Короткі сусідні речення склеюємо до max знаків. Дуже довге речення (>220) ділимо лише за ; або : */
+function hfSplit(text,max){
+  const ss=(text.match(/[^.!?…]+[.!?…]+["»”)]*|[^.!?…]+$/g)||[text]).map(x=>x.trim()).filter(Boolean);
+  const out=[];
+  ss.forEach(x=>{if(x.length<=220){out.push(x);return}
+    let cur='';x.split(/(?<=[;:])\s+/).forEach(q=>{
+      if(cur&&(cur+' '+q).length>max){out.push(cur);cur=q}else cur=cur?cur+' '+q:q});
+    if(cur)out.push(cur)});
+  const m=[];out.forEach(q=>{if(m.length&&(m[m.length-1]+' '+q).length<=max)m[m.length-1]+=' '+q;else m.push(q)});
+  return m.length?m:[text]}
+function hfFallback(text,idx){hfWait=false;engine='google';updateEngineUI();
+  if(!hfMsg)hfMsg='⚠ UA нейро недоступне → Google';speak(text,idx)}
+hfVoiceSel.onchange=()=>{if(engine==='hf'&&isPlaying&&!isPaused){stopSpeaking();speakScene()}};
+
+function stopSpeaking(){hfWait=false;gToken++;if(gAudio){gAudio.pause();gAudio=null}
+  if(synth){try{synth.cancel()}catch(e){}}
+  ttsActive=false;ttsDone=true}
+
+/* ================= ПЛЕЄР ================= */
+let currentScene=0,sceneTime=0,globalTime=0,isPlaying=false,isPaused=false,
+    hasStarted=false,finished=false,holdTimer=0,speed=1;
+function setPlayIcon(playing){icoPlay.style.display=playing?'none':'';
+  icoPause.style.display=playing?'':'none'}
+function setSubtitle(sc){if(chkSubs.checked){subtitleEl.textContent=sc.text;
+  subtitleEl.style.opacity='1'}else subtitleEl.style.opacity='0'}
+function startScene(i){currentScene=clamp(i,0,scenes.length-1);sceneTime=0;holdTimer=0;
+  const sc=scenes[currentScene];setSubtitle(sc);stopSpeaking();
+  if(isPlaying)speak(sc.text,currentScene);updateSceneButtons()}
+function speakScene(){const sc=scenes[currentScene];setSubtitle(sc);speak(sc.text,currentScene)}
+function startShow(){hasStarted=true;finished=false;isPlaying=true;isPaused=false;
+  setPlayIcon(true);startScene(0)}
+function doPause(){isPaused=true;setPlayIcon(false);
+  if(engine==='webspeech'&&synth)synth.pause();
+  if(gAudio)gAudio.pause()}
+function doResume(){isPaused=false;setPlayIcon(true);
+  if(engine==='webspeech'&&synth)synth.resume();
+  if(gAudio&&!gAudio.ended)gAudio.play()}
+function togglePlay(){if(!hasStarted){startShow();return}
+  if(!isPlaying){finished=false;isPlaying=true;isPaused=false;setPlayIcon(true);speakScene();return}
+  isPaused?doResume():doPause()}
+function stopShow(){isPlaying=false;isPaused=false;finished=false;setPlayIcon(false);
+  stopSpeaking();currentScene=0;sceneTime=0;holdTimer=0;
+  subtitleEl.style.opacity='0';updateSceneButtons()}
+function seekScene(i){i=clamp(i,0,scenes.length-1);stopSpeaking();finished=false;
+  currentScene=i;sceneTime=0;holdTimer=0;updateSceneButtons();
+  if(isPlaying&&!isPaused)speakScene();else setSubtitle(scenes[i])}
+function seekTime(T){let i=0;while(i<scenes.length-1&&T>=cum[i+1])i++;
+  stopSpeaking();finished=false;currentScene=i;sceneTime=T-cum[i];holdTimer=0;
+  updateSceneButtons();if(isPlaying&&!isPaused)speakScene();else setSubtitle(scenes[i])}
+
+/* ================= ОБРОБНИКИ ================= */
+btnPlay.onclick=togglePlay;
+btnStop.onclick=stopShow;
+btnNext.onclick=()=>seekScene(currentScene+1);
+btnPrev.onclick=()=>seekScene(currentScene-1);
+progressZone.onclick=e=>{const r=progressZone.getBoundingClientRect();
+  seekTime(clamp((e.clientX-r.left)/r.width,0,1)*TOTAL)};
+engineSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{userPicked=true;
+  engine=b.dataset.e;updateEngineUI();stopSpeaking();if(engine==='hf')hfEnsure();
+  if(isPlaying&&!isPaused)speakScene()});
+speedSel.onchange=()=>{speed=parseFloat(speedSel.value);if(gAudio){try{gAudio.playbackRate=speed}catch(e){}}};
+chkSubs.onchange=()=>{if(!chkSubs.checked)subtitleEl.style.opacity='0';
+  else setSubtitle(scenes[currentScene])};
+chkDebug.onchange=()=>{debugSection.style.display=chkDebug.checked?'block':'none'};
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'){e.preventDefault();togglePlay()}
+  else if(e.code==='ArrowRight')seekScene(currentScene+1);
+  else if(e.code==='ArrowLeft')seekScene(currentScene-1);
+  else if(e.code==='KeyR')stopShow()});
+canvas.addEventListener('click',()=>{if(!hasStarted)startShow()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)lastTs=performance.now()});
+
+/* ================= ЗАСІЧКИ / ДЕБАГ ================= */
+const tickEls=[];
+scenes.forEach((sc,i)=>{const t=document.createElement('div');t.className='tick';
+  t.style.left=(cum[i]/TOTAL*100)+'%';t.title=(i+1)+'. '+sc.tick+' ('+sc.dur+' с)';
+  t.onclick=e=>{e.stopPropagation();seekScene(i)};ticksLayer.appendChild(t);tickEls.push(t);
+  const l=document.createElement('div');l.className='tick-label';l.style.left=(cum[i]/TOTAL*100)+'%';
+  l.textContent=sc.tick;ticksLayer.appendChild(l)});
+function updateLabelsVis(){ticksLayer.querySelectorAll('.tick-label').forEach(l=>
+  l.style.display=chkLabels.checked?'':'none')}
+chkLabels.onchange=updateLabelsVis;updateLabelsVis();
+scenes.forEach((sc,i)=>{const b=document.createElement('button'),hd=document.createElement('b'),tx=document.createElement('span');
+  hd.textContent=(i+1)+'. '+fmt(cum[i])+' · '+sc.tick;tx.textContent=sc.text;b.appendChild(hd);b.appendChild(tx);
+  b.onclick=()=>seekScene(i);sceneListEl.appendChild(b)});
+function updateSceneButtons(){sceneListEl.querySelectorAll('button').forEach((b,i)=>
+  b.classList.toggle('active',i===currentScene));
+  sceneIndicator.textContent=(currentScene+1)+'/'+scenes.length+' · '+scenes[currentScene].tick}
+function fmt(s){s=Math.floor(s);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function updateHud(){const sc=scenes[currentScene];
+  const cur=cum[currentScene]+Math.min(sceneTime,sc.dur);
+  progressFill.style.width=(cur/TOTAL*100)+'%';
+  timeDisp.textContent=fmt(cur)+' / '+fmt(TOTAL);
+  tickEls.forEach((t,i)=>t.classList.toggle('active',i===currentScene));
+  voiceState.textContent=(engine==='none'?'🔇':(ttsActive?'🔊':'🔈'))+(hfMsg?' '+hfMsg:'');
+  voiceState.classList.toggle('active',ttsActive)}
+updateSceneButtons();
+
+/* ================= ГОЛОВНИЙ ЦИКЛ ================= */
+let lastTs=performance.now();
+function overlayStart(){ctx.fillStyle='rgba(8,12,26,.55)';ctx.fillRect(0,0,W,H);
+  const pu=1+0.05*Math.sin(performance.now()/300);
+  ctx.save();ctx.translate(W/2,H/2-30);ctx.scale(pu,pu);
+  ctx.beginPath();ctx.arc(0,0,54,0,TAU);ctx.fillStyle='rgba(255,255,255,.95)';ctx.fill();
+  ctx.strokeStyle='#e11d48';ctx.lineWidth=5;ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-14,-22);ctx.lineTo(-14,22);ctx.lineTo(24,0);ctx.closePath();
+  ctx.fillStyle='#e11d48';ctx.fill();ctx.restore();
+  fnt(22,true);ctx.fillStyle='#fff';txt('Натисніть, щоб дивитись з озвученням',W/2,H/2+70);
+  fnt(15);ctx.fillStyle='rgba(255,255,255,.85)';
+  txt('Space — пауза · ←/→ — сцени · клік по шкалі — перемотка',W/2,H/2+102)}
+
+function frame(ts){const rawDt=Math.min(0.1,(ts-lastTs)/1000);lastTs=ts;
+  if(isPlaying&&!isPaused&&!(engine==='hf'&&hfWait)){const dt=rawDt*speed;globalTime+=dt;sceneTime+=dt;
+    const sc=scenes[currentScene];
+    const animDone=sceneTime>=sc.dur;
+    const voiceOK=engine==='none'||ttsDone||sceneTime>sc.dur+(engine==='webspeech'?30:60);
+    if(animDone&&voiceOK){holdTimer+=dt;
+      if(holdTimer>=0.7){
+        if(currentScene<scenes.length-1)startScene(currentScene+1);
+        else{finished=true;isPlaying=false;isPaused=false;setPlayIcon(false);stopSpeaking()}}}
+    else holdTimer=0}
+  gtNow=globalTime; /* критично: мерехтіння ліхтарів, курсор, шеврони, сніг */
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#fbf7f0');g.addColorStop(1,'#f2ebdd');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  scenes[currentScene].draw(W,H,sceneTime,globalTime);
+  const f=1-stag(sceneTime,0,0.45);
+  if(f>0&&hasStarted){ctx.fillStyle='rgba(251,247,240,'+f*0.6+')';ctx.fillRect(0,0,W,H)}
+  if(hasStarted&&engine==='hf'&&hfWait){ctx.fillStyle='rgba(30,30,30,.75)';ctx.font='bold 16px Arial';ctx.textAlign='left';ctx.fillText('Готую озвучення…',16,H-16)}
+  if(!hasStarted)overlayStart();
+  updateHud();
+  requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
