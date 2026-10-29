@@ -27,6 +27,24 @@ tailwind.config = { theme: { extend: { colors: { brand: { 500: '#22c55e', 600: '
   <p id="msg" class="text-sm text-slate-500 text-center py-10"></p>
 </main>
 
+
+<!-- Модаль серіалу -->
+<div id="seriesModal" class="hidden fixed inset-0 z-[60] bg-black/70 items-center justify-center p-3 sm:p-6" role="dialog" aria-modal="true">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-full flex flex-col overflow-hidden">
+    <div class="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-slate-200">
+      <div class="min-w-0">
+        <div id="smSeries" class="text-[11px] uppercase tracking-wide text-slate-400"></div>
+        <h2 id="smTitle" class="font-bold text-sm sm:text-base text-slate-900 truncate"></h2>
+      </div>
+      <button id="smClose" class="shrink-0 w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-500" aria-label="Закрити"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="bg-black aspect-video w-full">
+      <iframe id="smFrame" class="w-full h-full border-0" allow="autoplay; fullscreen" allowfullscreen></iframe>
+    </div>
+    <div id="smEps" class="flex flex-wrap gap-2 p-3 border-t border-slate-200"></div>
+  </div>
+</div>
+
 <script>
 /* ===== Налаштування ===== */
 const OWNER = 'Oleg4i3', REPO = 'Education_AI_cartoons';
@@ -144,11 +162,124 @@ async function processOne(f, el) {
   if (thumb) ls.set('cartoon:' + f.name, { sha: f.sha, title, desc, thumb });
 }
 
+/* ===== Серіал (папка в репо, всі серії відкриваються в модалі) ===== */
+const SERIES = { dir: 'secret', title: 'Серіал' };   // dir — назва папки в репо; title — заголовок картки
+const numSort = (a, b) => a.name.localeCompare(b.name, 'uk', { numeric: true });
+
+async function listSeries() {
+  const c = ls.get('series:list');
+  if (c && Date.now() - c.t < LIST_TTL) return c.files;
+  try {
+    const r = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${encodeURIComponent(SERIES.dir)}`);
+    if (!r.ok) throw new Error('GitHub API ' + r.status);
+    const files = (await r.json())
+      .filter(f => f.type === 'file' && /\.html$/i.test(f.name))
+      .map(f => ({ name: f.name, path: SERIES.dir + '/' + f.name, sha: f.sha }))
+      .sort(numSort);
+    ls.set('series:list', { t: Date.now(), files });
+    return files;
+  } catch (e) { if (c) return c.files; throw e; }
+}
+
+const sm = { box: $('seriesModal'), frame: $('smFrame'), title: $('smTitle'), series: $('smSeries'), eps: $('smEps'), cur: -1 };
+let seriesFiles = [];
+const epTitles = {};
+
+function playEpisode(i) {
+  sm.cur = i;
+  const f = seriesFiles[i];
+  sm.frame.src = encodeURI(f.path);
+  sm.series.textContent = `${SERIES.title} · серія ${i + 1} з ${seriesFiles.length}`;
+  sm.title.textContent = epTitles[f.path] || '';
+  [...sm.eps.children].forEach((b, j) => {
+    const on = j === i;
+    b.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold transition border ' +
+      (on ? 'bg-brand-600 text-white border-brand-600' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200');
+  });
+}
+function openSeries(i = 0) {
+  if (!seriesFiles.length) return;
+  sm.eps.innerHTML = '';
+  seriesFiles.forEach((f, j) => {
+    const b = document.createElement('button');
+    b.textContent = `Серія ${j + 1}`;
+    b.title = epTitles[f.path] || '';
+    b.onclick = () => playEpisode(j);
+    sm.eps.appendChild(b);
+  });
+  sm.box.classList.remove('hidden'); sm.box.classList.add('flex');
+  document.body.style.overflow = 'hidden';
+  playEpisode(i);
+  seriesFiles.forEach((f, j) => {                    // назви серій підтягуємо з <title>
+    if (epTitles[f.path]) return;
+    fetch(f.path).then(r => r.ok ? r.text() : '').then(h => {
+      const t = (new DOMParser().parseFromString(h, 'text/html').title || '').replace(TITLE_STRIP, '').trim();
+      if (!t) return;
+      epTitles[f.path] = t;
+      if (sm.eps.children[j]) sm.eps.children[j].title = t;
+      if (sm.cur === j) sm.title.textContent = t;
+    }).catch(() => {});
+  });
+}
+function closeSeries() {
+  sm.frame.src = 'about:blank';                      // зупиняє звук і анімацію
+  sm.box.classList.add('hidden'); sm.box.classList.remove('flex');
+  document.body.style.overflow = '';
+  sm.cur = -1;
+}
+$('smClose').onclick = closeSeries;
+sm.box.addEventListener('click', e => { if (e.target === sm.box) closeSeries(); });
+document.addEventListener('keydown', e => {
+  if (sm.cur < 0) return;
+  if (e.key === 'Escape') closeSeries();
+  else if (e.key === 'ArrowRight' && sm.cur < seriesFiles.length - 1) playEpisode(sm.cur + 1);
+  else if (e.key === 'ArrowLeft' && sm.cur > 0) playEpisode(sm.cur - 1);
+});
+
+// Створює картку серіалу; повертає функцію, що пізніше робить превʼю з першої серії
+async function initSeries() {
+  let files;
+  try { files = await listSeries(); } catch (e) { console.warn('серіал:', e); return null; }
+  if (!files.length) return null;
+  seriesFiles = files;
+  const el = makeCard({ name: files[0].path });
+  el.dataset.series = '1';
+  el.classList.add('ring-2', 'ring-brand-500');
+  const pv = el.querySelector('.pv'), btn = el.querySelector('.p-4 a');
+  [pv, btn].forEach(a => a.addEventListener('click', e => { e.preventDefault(); openSeries(0); }));
+  btn.querySelector('span').textContent = 'Дивитись серіал';
+  btn.querySelector('i').className = 'fa-solid fa-layer-group text-[10px]';
+  const badge = document.createElement('span');
+  badge.className = 'absolute top-2 left-2 bg-brand-600 text-white text-[11px] font-bold px-2 py-0.5 rounded-full shadow';
+  badge.textContent = `Серіал · ${files.length} сер.`;
+  const desc = `${files.length} серій — відкриваються в одному вікні`;
+  const key = 'series:card';
+  const c = ls.get(key);
+  const sig = files.map(f => f.sha).join(',');
+  const paint = thumb => {
+    fill(el, { title: SERIES.title, desc, thumb });
+    pv.appendChild(badge);
+  };
+  catalog.prepend(el);
+  if (c && c.sig === sig) { paint(c.thumb); return null; }
+  paint(null);
+  return async () => {
+    try {
+      const r = await fetch(files[0].path);
+      if (!r.ok) return;
+      const thumb = await snapshot(files[0].path, await r.text());
+      paint(thumb);
+      ls.set(key, { sig, thumb });
+    } catch (e) { console.warn('превʼю серіалу:', e); }
+  };
+}
+
 /* ===== Ініціалізація ===== */
 function sortCards() {
-  [...catalog.children]
+  [...catalog.children].filter(c => !c.dataset.series)
     .sort((a, b) => a.querySelector('h3').textContent.localeCompare(b.querySelector('h3').textContent, 'uk'))
     .forEach(c => catalog.appendChild(c));
+  const sc = catalog.querySelector('[data-series]'); if (sc) catalog.prepend(sc);   // серіал завжди першим
 }
 
 async function init() {
@@ -159,7 +290,7 @@ async function init() {
     msg.innerHTML = `Не вдалося отримати список мультиків (${esc(e.message)}). <button id="retry" class="underline">Повторити</button>`;
     $('retry').onclick = init; return;
   }
-  msg.textContent = files.length ? '' : 'Мультиків не знайдено.';
+  msg.textContent = files.length ? '' : '';
   try {                                          // прибрати кеш видалених файлів
     Object.keys(localStorage).filter(k => k.startsWith('cartoon:') && !files.some(f => 'cartoon:' + f.name === k))
       .forEach(k => localStorage.removeItem(k));
@@ -173,12 +304,15 @@ async function init() {
     if (c && c.sha === f.sha) fill(el, c); else queue.push([f, el]);
   });
   sortCards();
+  const seriesThumb = await initSeries();
+  sortCards();
 
   let n = 0;
   for (const [f, el] of queue) {                 // по черзі, щоб не вантажити процесор
     status.textContent = `Готую превʼю: ${++n}/${queue.length}`;
     try { await processOne(f, el); } catch (e) { console.warn(f.name, e); fill(el, { title: prettify(f.name) }); }
   }
+  if (seriesThumb) { status.textContent = 'Готую превʼю серіалу…'; await seriesThumb(); }
   status.textContent = '';
   if (queue.length) sortCards();
 }
