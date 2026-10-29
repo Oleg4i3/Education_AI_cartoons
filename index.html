@@ -29,8 +29,8 @@ tailwind.config = { theme: { extend: { colors: { brand: { 500: '#22c55e', 600: '
 
 
 <!-- Модаль серіалу: лише список серій -->
-<div id="seriesModal" class="hidden fixed inset-0 z-[60] bg-black/60 items-center justify-center p-4" role="dialog" aria-modal="true">
-  <div class="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-full flex flex-col overflow-hidden">
+<div id="seriesModal" class="hidden fixed inset-0 z-[60] bg-black/60 items-center justify-center p-3 sm:p-6" role="dialog" aria-modal="true">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-full flex flex-col overflow-hidden">
     <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200">
       <div class="min-w-0">
         <div id="smSeries" class="text-[11px] uppercase tracking-wide text-slate-400"></div>
@@ -38,7 +38,7 @@ tailwind.config = { theme: { extend: { colors: { brand: { 500: '#22c55e', 600: '
       </div>
       <button id="smClose" class="shrink-0 w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-500" aria-label="Закрити"><i class="fa-solid fa-xmark"></i></button>
     </div>
-    <div id="smEps" class="p-3 space-y-2 overflow-y-auto"></div>
+    <div id="smEps" class="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto bg-slate-100"></div>
   </div>
 </div>
 
@@ -179,33 +179,59 @@ async function listSeries() {
 }
 
 const sm = { box: $('seriesModal'), title: $('smTitle'), series: $('smSeries'), eps: $('smEps'), isOpen: false };
-let seriesFiles = [];
-const epTitles = ls.get('series:titles') || {};
+let seriesFiles = [], epCards = [], epLoad = null;
 
-function renderEpisodes() {
-  sm.eps.innerHTML = seriesFiles.map((f, j) => `
-    <a href="${encodeURI(f.path)}" class="group/ep flex items-center gap-3 px-3 py-2.5 rounded-lg border border-slate-200 hover:border-brand-500 hover:bg-slate-50 transition">
-      <span class="w-8 h-8 shrink-0 rounded-full bg-slate-100 group-hover/ep:bg-brand-600 group-hover/ep:text-white text-slate-700 text-sm font-bold flex items-center justify-center transition">${j + 1}</span>
-      <span class="ep-t flex-grow text-sm font-semibold text-slate-800 leading-snug">${esc(epTitles[f.path] || 'Серія ' + (j + 1))}</span>
-      <i class="fa-solid fa-play text-[10px] text-slate-400 group-hover/ep:text-brand-600"></i>
-    </a>`).join('');
+function paintEp(el, d, j) {
+  fill(el, d);
+  const pv = el.querySelector('.pv');
+  if (!pv.querySelector('.epn')) {
+    const b = document.createElement('span');
+    b.className = 'epn absolute top-2 left-2 bg-black/60 text-white text-[11px] font-bold px-2 py-0.5 rounded-full';
+    b.textContent = 'Серія ' + (j + 1);
+    pv.appendChild(b);
+  }
+}
+function buildEpisodeCards() {
+  sm.eps.innerHTML = '';
+  epCards = seriesFiles.map((f, j) => {
+    const el = makeCard({ name: f.path });            // посилання веде на повноекранну серію
+    paintEp(el, { title: 'Серія ' + (j + 1) }, j);
+    sm.eps.appendChild(el);
+    return el;
+  });
+}
+async function processEpisode(f, el, j) {
+  const r = await fetch(f.path);
+  if (!r.ok) return;
+  const html = await r.text();
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const title = (doc.title || 'Серія ' + (j + 1)).replace(TITLE_STRIP, '').trim();
+  const desc = (doc.querySelector('meta[name="description"]') || {}).content || '';
+  paintEp(el, { title, desc }, j);
+  let thumb = null;
+  try { thumb = await snapshot(f.path, html); } catch (e) { console.warn('превʼю:', f.path, e); }
+  paintEp(el, { title, desc, thumb }, j);
+  if (thumb) ls.set('ep:' + f.path, { sha: f.sha, title, desc, thumb });
+}
+function loadEpisodes() {                              // один раз; превʼю серій по черзі
+  if (epLoad) return epLoad;
+  epLoad = (async () => {
+    const todo = [];
+    seriesFiles.forEach((f, j) => {
+      const c = ls.get('ep:' + f.path);
+      if (c && c.sha === f.sha) paintEp(epCards[j], c, j); else todo.push([f, epCards[j], j]);
+    });
+    for (const [f, el, j] of todo) { try { await processEpisode(f, el, j); } catch (e) { console.warn(f.path, e); } }
+  })();
+  return epLoad;
 }
 function openSeries() {
   if (!seriesFiles.length) return;
   sm.title.textContent = SERIES.title;
   sm.series.textContent = `${seriesFiles.length} серій`;
-  renderEpisodes();
   sm.box.classList.remove('hidden'); sm.box.classList.add('flex');
   document.body.style.overflow = 'hidden'; sm.isOpen = true;
-  seriesFiles.forEach((f, j) => {                    // назви серій підтягуємо з <title>
-    if (epTitles[f.path]) return;
-    fetch(f.path).then(r => r.ok ? r.text() : '').then(h => {
-      const t = (new DOMParser().parseFromString(h, 'text/html').title || '').replace(TITLE_STRIP, '').trim();
-      if (!t) return;
-      epTitles[f.path] = t; ls.set('series:titles', epTitles);
-      const el = sm.eps.querySelectorAll('.ep-t')[j]; if (el) el.textContent = t;
-    }).catch(() => {});
-  });
+  loadEpisodes();
 }
 function closeSeries() {
   sm.box.classList.add('hidden'); sm.box.classList.remove('flex');
@@ -221,6 +247,7 @@ async function initSeries() {
   try { files = await listSeries(); } catch (e) { console.warn('серіал:', e); return null; }
   if (!files.length) return null;
   seriesFiles = files;
+  buildEpisodeCards();
   const el = makeCard({ name: files[0].path });
   el.dataset.series = '1';
   el.classList.add('ring-2', 'ring-brand-500');
@@ -240,16 +267,20 @@ async function initSeries() {
     pv.appendChild(badge);
   };
   catalog.prepend(el);
-  if (c && c.sig === sig) { paint(c.thumb); return null; }
-  paint(null);
+  const need = !(c && c.sig === sig);
+  paint(need ? null : c.thumb);
   return async () => {
-    try {
-      const r = await fetch(files[0].path);
-      if (!r.ok) return;
-      const thumb = await snapshot(files[0].path, await r.text());
-      paint(thumb);
-      ls.set(key, { sig, thumb });
-    } catch (e) { console.warn('превʼю серіалу:', e); }
+    if (need) {
+      try {
+        const r = await fetch(files[0].path);
+        if (r.ok) {
+          const thumb = await snapshot(files[0].path, await r.text());
+          paint(thumb);
+          ls.set(key, { sig, thumb });
+        }
+      } catch (e) { console.warn('превʼю серіалу:', e); }
+    }
+    await loadEpisodes();                              // превʼю всіх серій, щоб модаль відкривався готовим
   };
 }
 
