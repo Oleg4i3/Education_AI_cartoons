@@ -28,20 +28,17 @@ tailwind.config = { theme: { extend: { colors: { brand: { 500: '#22c55e', 600: '
 </main>
 
 
-<!-- Модаль серіалу -->
-<div id="seriesModal" class="hidden fixed inset-0 z-[60] bg-black/70 items-center justify-center p-3 sm:p-6" role="dialog" aria-modal="true">
-  <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-full flex flex-col overflow-hidden">
-    <div class="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-slate-200">
+<!-- Модаль серіалу: лише список серій -->
+<div id="seriesModal" class="hidden fixed inset-0 z-[60] bg-black/60 items-center justify-center p-4" role="dialog" aria-modal="true">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-full flex flex-col overflow-hidden">
+    <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200">
       <div class="min-w-0">
         <div id="smSeries" class="text-[11px] uppercase tracking-wide text-slate-400"></div>
-        <h2 id="smTitle" class="font-bold text-sm sm:text-base text-slate-900 truncate"></h2>
+        <h2 id="smTitle" class="font-bold text-base text-slate-900 truncate"></h2>
       </div>
       <button id="smClose" class="shrink-0 w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-500" aria-label="Закрити"><i class="fa-solid fa-xmark"></i></button>
     </div>
-    <div class="bg-black aspect-video w-full">
-      <iframe id="smFrame" class="w-full h-full border-0" allow="autoplay; fullscreen" allowfullscreen></iframe>
-    </div>
-    <div id="smEps" class="flex flex-wrap gap-2 p-3 border-t border-slate-200"></div>
+    <div id="smEps" class="p-3 space-y-2 overflow-y-auto"></div>
   </div>
 </div>
 
@@ -181,60 +178,42 @@ async function listSeries() {
   } catch (e) { if (c) return c.files; throw e; }
 }
 
-const sm = { box: $('seriesModal'), frame: $('smFrame'), title: $('smTitle'), series: $('smSeries'), eps: $('smEps'), cur: -1 };
+const sm = { box: $('seriesModal'), title: $('smTitle'), series: $('smSeries'), eps: $('smEps'), isOpen: false };
 let seriesFiles = [];
-const epTitles = {};
+const epTitles = ls.get('series:titles') || {};
 
-function playEpisode(i) {
-  sm.cur = i;
-  const f = seriesFiles[i];
-  sm.frame.src = encodeURI(f.path);
-  sm.series.textContent = `${SERIES.title} · серія ${i + 1} з ${seriesFiles.length}`;
-  sm.title.textContent = epTitles[f.path] || '';
-  [...sm.eps.children].forEach((b, j) => {
-    const on = j === i;
-    b.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold transition border ' +
-      (on ? 'bg-brand-600 text-white border-brand-600' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200');
-  });
+function renderEpisodes() {
+  sm.eps.innerHTML = seriesFiles.map((f, j) => `
+    <a href="${encodeURI(f.path)}" class="group/ep flex items-center gap-3 px-3 py-2.5 rounded-lg border border-slate-200 hover:border-brand-500 hover:bg-slate-50 transition">
+      <span class="w-8 h-8 shrink-0 rounded-full bg-slate-100 group-hover/ep:bg-brand-600 group-hover/ep:text-white text-slate-700 text-sm font-bold flex items-center justify-center transition">${j + 1}</span>
+      <span class="ep-t flex-grow text-sm font-semibold text-slate-800 leading-snug">${esc(epTitles[f.path] || 'Серія ' + (j + 1))}</span>
+      <i class="fa-solid fa-play text-[10px] text-slate-400 group-hover/ep:text-brand-600"></i>
+    </a>`).join('');
 }
-function openSeries(i = 0) {
+function openSeries() {
   if (!seriesFiles.length) return;
-  sm.eps.innerHTML = '';
-  seriesFiles.forEach((f, j) => {
-    const b = document.createElement('button');
-    b.textContent = `Серія ${j + 1}`;
-    b.title = epTitles[f.path] || '';
-    b.onclick = () => playEpisode(j);
-    sm.eps.appendChild(b);
-  });
+  sm.title.textContent = SERIES.title;
+  sm.series.textContent = `${seriesFiles.length} серій`;
+  renderEpisodes();
   sm.box.classList.remove('hidden'); sm.box.classList.add('flex');
-  document.body.style.overflow = 'hidden';
-  playEpisode(i);
+  document.body.style.overflow = 'hidden'; sm.isOpen = true;
   seriesFiles.forEach((f, j) => {                    // назви серій підтягуємо з <title>
     if (epTitles[f.path]) return;
     fetch(f.path).then(r => r.ok ? r.text() : '').then(h => {
       const t = (new DOMParser().parseFromString(h, 'text/html').title || '').replace(TITLE_STRIP, '').trim();
       if (!t) return;
-      epTitles[f.path] = t;
-      if (sm.eps.children[j]) sm.eps.children[j].title = t;
-      if (sm.cur === j) sm.title.textContent = t;
+      epTitles[f.path] = t; ls.set('series:titles', epTitles);
+      const el = sm.eps.querySelectorAll('.ep-t')[j]; if (el) el.textContent = t;
     }).catch(() => {});
   });
 }
 function closeSeries() {
-  sm.frame.src = 'about:blank';                      // зупиняє звук і анімацію
   sm.box.classList.add('hidden'); sm.box.classList.remove('flex');
-  document.body.style.overflow = '';
-  sm.cur = -1;
+  document.body.style.overflow = ''; sm.isOpen = false;
 }
 $('smClose').onclick = closeSeries;
 sm.box.addEventListener('click', e => { if (e.target === sm.box) closeSeries(); });
-document.addEventListener('keydown', e => {
-  if (sm.cur < 0) return;
-  if (e.key === 'Escape') closeSeries();
-  else if (e.key === 'ArrowRight' && sm.cur < seriesFiles.length - 1) playEpisode(sm.cur + 1);
-  else if (e.key === 'ArrowLeft' && sm.cur > 0) playEpisode(sm.cur - 1);
-});
+document.addEventListener('keydown', e => { if (sm.isOpen && e.key === 'Escape') closeSeries(); });
 
 // Створює картку серіалу; повертає функцію, що пізніше робить превʼю з першої серії
 async function initSeries() {
@@ -246,13 +225,13 @@ async function initSeries() {
   el.dataset.series = '1';
   el.classList.add('ring-2', 'ring-brand-500');
   const pv = el.querySelector('.pv'), btn = el.querySelector('.p-4 a');
-  [pv, btn].forEach(a => a.addEventListener('click', e => { e.preventDefault(); openSeries(0); }));
+  [pv, btn].forEach(a => a.addEventListener('click', e => { e.preventDefault(); openSeries(); }));
   btn.querySelector('span').textContent = 'Дивитись серіал';
   btn.querySelector('i').className = 'fa-solid fa-layer-group text-[10px]';
   const badge = document.createElement('span');
   badge.className = 'absolute top-2 left-2 bg-brand-600 text-white text-[11px] font-bold px-2 py-0.5 rounded-full shadow';
   badge.textContent = `Серіал · ${files.length} сер.`;
-  const desc = `${files.length} серій — відкриваються в одному вікні`;
+  const desc = `${files.length} серій — натисніть, щоб обрати серію`;
   const key = 'series:card';
   const c = ls.get(key);
   const sig = files.map(f => f.sha).join(',');
