@@ -54,6 +54,11 @@ select{background:#2a221b;color:#eee;border:1px solid rgba(255,255,255,.2);borde
   font:12px Georgia;cursor:pointer;text-align:left}
 .scene-list button:hover{border-color:#1e40af}
 .scene-list button.active{background:#1e40af;color:#fff;border-color:#1e40af}
+.scene-list{display:flex!important;flex-direction:column;gap:8px}
+.scene-list button{width:100%;padding:10px 12px;line-height:1.5;font:14px Georgia,serif}
+.scene-list button b{display:block;font-size:13px;color:#1e40af;margin-bottom:3px}
+.scene-list button span{display:block;font-weight:normal;color:#4a3f2e}
+.scene-list button.active b,.scene-list button.active span{color:#fff}
 </style>
 </head>
 <body>
@@ -88,13 +93,13 @@ select{background:#2a221b;color:#eee;border:1px solid rgba(255,255,255,.2);borde
       </select>
       <label class="chk"><input type="checkbox" id="chkSubs"><span>Субтитри</span></label>
       <label class="chk"><input type="checkbox" id="chkLabels" checked><span>Назви сцен</span></label>
-      <label class="chk"><input type="checkbox" id="chkDebug"><span>Дебаг</span></label>
+      <label class="chk"><input type="checkbox" id="chkDebug"><span>Транскрипт</span></label>
       <span class="voice" id="voiceState">🔈</span>
     </div>
   </div>
 
   <div class="debug-section" id="debugSection" style="display:none">
-    <h3>🔧 Перейти до сцени</h3>
+    <h3>📜 Транскрипт: натисніть на сцену, щоб перейти до неї</h3>
     <div class="scene-list" id="sceneList"></div>
   </div>
 </div>
@@ -351,6 +356,38 @@ const scenes=[
  {tick:'Чому працює',dur:15,draw:sc4,text:"Алгоритм завжди завершується. Кожен пропонує кожній щонайбільше один раз, тож пропозицій не більше шістнадцяти. І розподіл стабільний. Якщо хлопець хотів би когось кращого, то вона вже відмовила йому, бо мала кращого."},
  {tick:'Кому краще',dur:15,draw:sc5,text:"Але є тонкість. Той, хто пропонує, отримує найкращу пару з усіх можливих стабільних. А той, хто обирає, отримує найгіршу з можливих. Якщо почнуть пропонувати дівчата, виграють саме вони."},
  {tick:'Реальність',dur:14,draw:sc6,text:"Це не лише бал. Так розподіляють лікарів по лікарнях, школярів по школах, а донорські нирки пацієнтам. У дві тисячі дванадцятому році Шеплі та Елвін Рот отримали за це Нобелівську премію з економіки. Дякую за увагу!"}];
+/*STUDIO-VOICE-BEGIN*/
+/* озвучення диктора: mp3 за назвою сцени; без файлу працює попередній синтез */
+const VOICE=[{"tick":"Матриця","file":"stable-marriage-matrytsia.mp3?v=mvrr7mjt","dur":21.33},{"tick":"Танці","file":"stable-marriage-tantsi.mp3?v=mvrr9yeg","dur":18.47},{"tick":"Рейтинг","file":"stable-marriage-reitynh.mp3?v=mvrraxqs","dur":20.65},{"tick":"Розстановка","file":"stable-marriage-rozstanovka.mp3?v=mvrrc2m3","dur":18.79},{"tick":"Блокуюча пара","file":"stable-marriage-blokuiucha-para.mp3?v=mvrrcuvb","dur":25.75},{"tick":"Правила","file":"stable-marriage-pravyla.mp3?v=mvrredmg","dur":26.13},{"tick":"Алгоритм","file":"stable-marriage-alhorytm.mp3?v=mvrrf5hl","dur":18.49},{"tick":"Чому працює","file":"stable-marriage-chomu-pratsiuie.mp3?v=mvrrg844","dur":17.75},{"tick":"Кому краще","file":"stable-marriage-komu-krashche.mp3?v=mvrriipj","dur":14.97},{"tick":"Реальність","file":"stable-marriage-realnist.mp3?v=mvrrj7ig","dur":17.97}];
+const VOICE_FAIL={};
+function voiceFor(i){const s=scenes[i];if(!s)return null;const e=VOICE[i];if(e&&e.tick===s.tick)return e;return VOICE.find(function(x){return x&&x.tick===s.tick})||null}
+scenes.forEach(function(s,i){const e=voiceFor(i);if(e&&e.dur&&e.dur+1>s.dur)s.dur=Math.ceil(e.dur+1)});
+function speak(text,sceneIdx){
+  const e=(engine!=='none'&&!VOICE_FAIL[sceneIdx])?voiceFor(sceneIdx):null;
+  if(!e)return speakSynth(text,sceneIdx);
+  voiceScene=sceneIdx;ttsDone=false;ttsActive=true;
+  const myTok=++gToken;
+  const fin=function(){if(myTok===gToken&&voiceScene===sceneIdx){ttsDone=true;ttsActive=false}};
+  const fail=function(){if(myTok!==gToken)return;VOICE_FAIL[sceneIdx]=1;speakSynth(text,sceneIdx)};
+  const off=voiceSeek?Math.max(0,sceneTime):0;
+  if(off>=e.dur-0.05){gAudio=null;fin();return}
+  const a=new Audio(e.file);gAudio=a;a.playbackRate=speed;
+  a.onended=fin;a.onerror=fail;
+  if(off>0){try{a.currentTime=off}catch(x){}a.addEventListener('loadedmetadata',function(){if(Math.abs(a.currentTime-off)>0.3)try{a.currentTime=off}catch(x){}},{once:true})}
+  const pl=a.play();
+  if(pl)pl.catch(function(err){if(myTok!==gToken)return;if(err&&err.name==='AbortError')return;if(err&&err.name==='NotAllowedError'){fin();return}fail()});
+}
+/* перемотка по шкалі: озвучка стає на ту саму позицію всередині сцени */
+let voiceSeek=false;
+const _seekTime=seekTime;
+seekTime=function(T){voiceSeek=true;try{_seekTime(T)}finally{voiceSeek=false}};
+const _doResume=doResume;
+doResume=function(){
+  const e=voiceFor(currentScene),need=!gAudio&&engine!=='none'&&e&&!VOICE_FAIL[currentScene]&&sceneTime<e.dur-0.05;
+  _doResume();
+  if(need){voiceSeek=true;try{speak(scenes[currentScene].text,currentScene)}finally{voiceSeek=false}}
+};
+/*STUDIO-VOICE-END*/
 const cum=[];let acc0=0;scenes.forEach(s=>{cum.push(acc0);acc0+=s.dur});
 const TOTAL=acc0;
 
@@ -388,7 +425,7 @@ function gFallback(rest,idx){
   hfMsg='⚠ Google TTS недоступний → Web Speech';
   engine='webspeech';updateEngineUI();
   if(rest&&rest.trim())speak(rest,idx);else{if(voiceScene===idx){ttsDone=true;ttsActive=false}}}
-function speak(text,sceneIdx){voiceScene=sceneIdx;ttsDone=false;ttsActive=true;
+function speakSynth(text,sceneIdx){voiceScene=sceneIdx;ttsDone=false;ttsActive=true;
   const done=()=>{if(voiceScene===sceneIdx){ttsDone=true;ttsActive=false}};
   if(engine==='none'){ttsDone=true;ttsActive=false;return}
   if(engine==='webspeech'){const v=synth&&ukVoice();
@@ -488,10 +525,10 @@ function startShow(){hasStarted=true;finished=false;isPlaying=true;isPaused=fals
   setPlayIcon(true);startScene(0)}
 function doPause(){isPaused=true;setPlayIcon(false);
   if(engine==='webspeech'&&synth)synth.pause();
-  if((engine==='google'||engine==='hf')&&gAudio)gAudio.pause()}
+  if(gAudio)gAudio.pause()}
 function doResume(){isPaused=false;setPlayIcon(true);
   if(engine==='webspeech'&&synth)synth.resume();
-  if((engine==='google'||engine==='hf')&&gAudio)gAudio.play()}
+  if(gAudio&&!gAudio.ended)gAudio.play()}
 function togglePlay(){if(!hasStarted){startShow();return}
   if(!isPlaying){finished=false;isPlaying=true;isPaused=false;setPlayIcon(true);speakScene();return}
   isPaused?doResume():doPause()}
@@ -515,7 +552,7 @@ progressZone.onclick=e=>{const r=progressZone.getBoundingClientRect();
 engineSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{userPicked=true;
   engine=b.dataset.e;if(engine!=='hf')hfMsg='';updateEngineUI();stopSpeaking();if(engine==='hf')hfEnsure();
   if(isPlaying&&!isPaused)speakScene()});
-speedSel.onchange=()=>{speed=parseFloat(speedSel.value)};
+speedSel.onchange=()=>{speed=parseFloat(speedSel.value);if(gAudio){try{gAudio.playbackRate=speed}catch(e){}}};
 chkSubs.onchange=()=>{if(!chkSubs.checked)subtitleEl.style.opacity='0';
   else setSubtitle(scenes[currentScene])};
 chkDebug.onchange=()=>{debugSection.style.display=chkDebug.checked?'block':'none'};
@@ -537,9 +574,9 @@ scenes.forEach((sc,i)=>{const t=document.createElement('div');t.className='tick'
 function updateLabelsVis(){ticksLayer.querySelectorAll('.tick-label').forEach(l=>
   l.style.display=chkLabels.checked?'':'none')}
 chkLabels.onchange=updateLabelsVis;updateLabelsVis();
-scenes.forEach((sc,i)=>{const b=document.createElement('button');
-  b.textContent=fmt(cum[i])+' · '+sc.tick;b.onclick=()=>seekScene(i);
-  sceneListEl.appendChild(b)});
+scenes.forEach((sc,i)=>{const b=document.createElement('button'),hd=document.createElement('b'),tx=document.createElement('span');
+  hd.textContent=(i+1)+'. '+fmt(cum[i])+' · '+sc.tick;tx.textContent=sc.text;b.appendChild(hd);b.appendChild(tx);
+  b.onclick=()=>seekScene(i);sceneListEl.appendChild(b)});
 function updateSceneButtons(){sceneListEl.querySelectorAll('button').forEach((b,i)=>
   b.classList.toggle('active',i===currentScene));
   sceneIndicator.textContent=(currentScene+1)+'/'+scenes.length+' · '+scenes[currentScene].tick}
